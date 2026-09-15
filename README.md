@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# A-Count — Bank Statement Intelligence & Ledger
 
-## Getting Started
+> Personal bank statement intelligence, automated merchant categorization, and financial ledger platform designed with high-density Swiss/Mercury fintech aesthetics.
 
-First, run the development server:
+---
+
+## ✨ Features
+
+- **🏦 Multi-Bank Statement Ingestion**: Drag & drop CSV or Excel (`.xlsx`, `.xls`) statements from HDFC, ICICI, SBI, Axis, Kotak, or any custom bank format.
+- **⚡ Smart Column Mapping**: Auto-detects and matches date, narration, debit, credit, running balance, and reference columns.
+- **🏷️ Deterministic Rule Engine**: Classifies 30+ Indian merchants instantly (Swiggy, Zomato, Blinkit, Uber, Ola, Petrol/HPCL, Amazon, Netflix, Salary, etc.) with priority-ranked matching.
+- **🔍 Regex UPI VPA & Merchant Extraction**: Automatically extracts UPI IDs (`merchant@bank`) and clean merchant names from raw bank narrations.
+- **📊 Executive Dashboard & Reactive Analytics**:
+  - Filter all KPI cards, cash flow trends, and category donut charts by **Period Presets**, **Specific Months**, or **Custom Date Ranges**.
+  - Net flow velocity, monthly savings rate, and inflow/outflow breakdown.
+- **📱 Responsive & PWA-Ready**: Seamless experience on desktop, tablet, and mobile with bottom navigation and mobile headers.
+- **🛡️ Passphrase Security & Privacy**: Self-hosted personal vault with session protection. All data remains in your personal database. Zero external telemetry.
+- **⚡ Serverless PostgreSQL Backend**: Powered by free **Neon Serverless PostgreSQL** (`@neondatabase/serverless`) with Next.js 16 (App Router + Turbopack).
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework**: [Next.js 16](https://nextjs.org/) (App Router, Turbopack, React 19)
+- **Database**: [Neon Serverless PostgreSQL](https://neon.tech/) (`@neondatabase/serverless`)
+- **Visualizations**: [Recharts](https://recharts.org/)
+- **Styling**: Vanilla CSS Design System with Plus Jakarta Sans & JetBrains Mono typography
+- **Parsers**: [PapaParse](https://www.papaparse.com/) (CSV) & [SheetJS (xlsx)](https://sheetjs.com/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone & Install Dependencies
+
+```bash
+git clone https://github.com/ReachOutToHardik/a-count.git
+cd a-count
+npm install
+```
+
+### 2. Configure Environment Variables
+
+Create a `.env.local` file in the project root:
+
+```env
+# Free Neon Serverless PostgreSQL Connection String
+DATABASE_URL=postgresql://neondb_owner:YOUR_PASSWORD@ep-sample-123456.us-east-2.aws.neon.tech/neondb?sslmode=require
+
+# App Security Passphrase (enter this on the login screen)
+APP_PASSPHRASE=choose
+
+# Optional: Google Gemini API key for fallback categorization
+GEMINI_API_KEY=
+```
+
+### 3. Initialize Database Schema
+
+1. Open your database console at [console.neon.tech](https://console.neon.tech).
+2. Go to **SQL Editor**.
+3. Copy and run the contents of [`neon/schema.sql`](./neon/schema.sql).
+4. *(Optional test data)*: Run [`neon/seed_test_data.sql`](./neon/seed_test_data.sql) if you want instant demo accounts and entries.
+
+### 4. Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📁 Sample Statement Files for Testing
 
-## Learn More
+You can use the included sample CSV files to test statement uploads:
+- `sample_hdfc_statement.csv`: Personal savings statement with UPI, salary, fuel, and subscriptions.
+- `sample_business_statement.csv`: Business current account statement with invoice retainers, AWS, and rent.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📄 License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT License. Built for personal financial intelligence.
