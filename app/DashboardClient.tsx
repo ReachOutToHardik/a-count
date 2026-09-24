@@ -329,7 +329,7 @@ export default function DashboardClient({
                 className={`filter-chip ${datePreset === preset.id ? 'active' : ''}`}
                 onClick={() => {
                   setDatePreset(preset.id)
-                  if (preset.id !== 'month_select') setSelectedMonth('')
+                  setSelectedMonth('')
                 }}
               >
                 {preset.label}
