@@ -14,8 +14,8 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: { template: '%s · A-Count', default: 'A-Count — Bank Intelligence' },
-  description: 'Personal bank statement manager — search, tag, and analyse all your accounts in one place.',
+  title: { template: '%s · A-Count', default: 'A-Count — Personal Wealth & Finance' },
+  description: 'Track your accounts, transactions, investments, and net worth all in one place.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,

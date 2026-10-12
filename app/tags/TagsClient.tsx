@@ -2,9 +2,26 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Tag, TagRule, RuleCondition, RuleField, RuleOp } from '@/lib/types'
 import TagPill from '@/components/tags/TagPill'
-import { Plus, Pencil, Trash2, X, Zap, Tag as TagIcon, Sparkles } from 'lucide-react'
+import ModalPortal from '@/components/ui/ModalPortal'
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Zap,
+  Tag as TagIcon,
+  Sparkles,
+  ArrowRight,
+  Search,
+  ArrowLeftRight,
+  BarChart3,
+  UploadCloud,
+  RefreshCw,
+  Loader2,
+} from 'lucide-react'
 
 interface Props {
   tags: Tag[]
@@ -37,6 +54,8 @@ export default function TagsClient({ tags, rules }: Props) {
   const [editRule, setEditRule] = useState<TagRule | null>(null)
   const [editTag, setEditTag] = useState<Tag | null>(null)
   const [saving, setSaving] = useState(false)
+  const [applyingRules, setApplyingRules] = useState(false)
+  const [applyMessage, setApplyMessage] = useState<string | null>(null)
   const router = useRouter()
 
   const [ruleName, setRuleName] = useState('')
@@ -136,15 +155,54 @@ export default function TagsClient({ tags, rules }: Props) {
     router.refresh()
   }
 
+  async function handleReapplyRules(scope: 'untagged' | 'all') {
+    setApplyingRules(true)
+    setApplyMessage(null)
+    try {
+      const res = await fetch('/api/rules/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setApplyMessage(`✓ Successfully applied rules! Categorized ${data.updatedCount} of ${data.totalProcessed} transactions.`)
+        setTimeout(() => setApplyMessage(null), 6000)
+        router.refresh()
+      } else {
+        setApplyMessage(`Failed to apply rules: ${data.error || 'Unknown error'}`)
+      }
+    } catch (err: any) {
+      setApplyMessage(`Error applying rules: ${err.message}`)
+    } finally {
+      setApplyingRules(false)
+    }
+  }
+
   return (
     <div>
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Tags & Classification Engine</h1>
-          <p className="page-subtitle">Configure deterministic IFTTT rules and custom categorization tags</p>
+          <h1 className="page-title">Tags & Automatic Rules</h1>
+          <p className="page-subtitle">Create automatic rules to categorize your spending and organize tags</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleReapplyRules('untagged')}
+            disabled={applyingRules}
+            title="Re-run all rules across untagged transactions in the ledger"
+          >
+            {applyingRules ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
+            {applyingRules ? 'Applying Rules…' : 'Apply Rules to Ledger'}
+          </button>
+          <Link href="/analytics" className="btn btn-secondary">
+            <BarChart3 size={14} /> Category Analytics
+          </Link>
+          <Link href="/import" className="btn btn-secondary">
+            <UploadCloud size={14} /> Import & Auto-Tag
+          </Link>
           {activeTab === 'rules' ? (
             <button className="btn btn-primary" onClick={openNewRule}>
               <Plus size={14} /> New Rule
@@ -156,6 +214,29 @@ export default function TagsClient({ tags, rules }: Props) {
           )}
         </div>
       </div>
+
+      {applyMessage && (
+        <div
+          style={{
+            background: 'var(--green-subtle, rgba(22,163,74,0.08))',
+            border: '1px solid rgba(22,163,74,0.25)',
+            borderRadius: 'var(--radius)',
+            padding: '10px 16px',
+            fontSize: 12.5,
+            color: 'var(--green, #16a34a)',
+            fontWeight: 600,
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>{applyMessage}</span>
+          <button onClick={() => setApplyMessage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
@@ -209,46 +290,61 @@ export default function TagsClient({ tags, rules }: Props) {
                     <th>Rule Name</th>
                     <th>Condition Logic</th>
                     <th>Applied Tags</th>
-                    <th style={{ width: 100, textAlign: 'right' }}>Actions</th>
+                    <th style={{ width: 180, textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map(rule => (
-                    <tr key={rule.id}>
-                      <td>
-                        <span className="badge badge-neutral" style={{ fontFamily: 'var(--font-mono)' }}>
-                          #{rule.priority}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{rule.name}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {rule.conditions.map((c, i) => (
-                            <span key={i} className="filter-chip" style={{ cursor: 'default', fontSize: 11 }}>
-                              <span style={{ color: 'var(--text-muted)' }}>{c.field}</span>
-                              <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{c.op}</span>
-                              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>&ldquo;{c.value}&rdquo;</span>
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="tags-cell">
-                          {rule.tags.map(t => <TagPill key={t} tag={t} />)}
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: 4 }}>
-                          <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEditRule(rule)} title="Edit Rule">
-                            <Pencil size={12} />
-                          </button>
-                          <button className="btn btn-danger btn-icon btn-sm" onClick={() => deleteRule(rule.id)} title="Delete Rule">
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {rules.map(rule => {
+                    const sampleQuery = rule.conditions[0]?.value || rule.name
+                    return (
+                      <tr key={rule.id}>
+                        <td>
+                          <span className="badge badge-neutral" style={{ fontFamily: 'var(--font-mono)' }}>
+                            #{rule.priority}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{rule.name}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {rule.conditions.map((c, i) => (
+                              <span key={i} className="filter-chip" style={{ cursor: 'default', fontSize: 11 }}>
+                                <span style={{ color: 'var(--text-muted)' }}>{c.field}</span>
+                                <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{c.op}</span>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>&ldquo;{c.value}&rdquo;</span>
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="tags-cell">
+                            {rule.tags.map(t => (
+                              <Link key={t} href={`/transactions?tag=${encodeURIComponent(t)}`} style={{ textDecoration: 'none' }} title={`Filter transactions tagged "${t}"`}>
+                                <TagPill tag={t} />
+                              </Link>
+                            ))}
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                            <Link
+                              href={`/transactions?search=${encodeURIComponent(sampleQuery)}`}
+                              className="btn btn-ghost btn-sm"
+                              style={{ fontSize: 11 }}
+                              title="Test & view matching transactions in ledger"
+                            >
+                              <Search size={11} /> Test
+                            </Link>
+                            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEditRule(rule)} title="Edit Rule">
+                              <Pencil size={12} />
+                            </button>
+                            <button className="btn btn-danger btn-icon btn-sm" onClick={() => deleteRule(rule.id)} title="Delete Rule">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -260,177 +356,217 @@ export default function TagsClient({ tags, rules }: Props) {
       {activeTab === 'tags' && (
         <div className="grid-auto">
           {tags.map(tag => (
-            <div key={tag.id} className="card card-sm" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{
-                width: 32,
-                height: 32,
-                borderRadius: 'var(--radius-sm)',
-                background: tag.color + '18',
-                border: `1px solid ${tag.color}33`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: tag.color }} />
+            <div key={tag.id} className="card card-sm" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 'var(--radius-sm)',
+                  background: tag.color + '18',
+                  border: `1px solid ${tag.color}33`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: tag.color }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tag.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{tag.color}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEditTag(tag)} title="Edit Tag">
+                    <Pencil size={12} />
+                  </button>
+                  <button className="btn btn-danger btn-icon btn-sm" onClick={() => deleteTag(tag.id)} title="Delete Tag">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>{tag.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{tag.color}</div>
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEditTag(tag)} title="Edit Tag">
-                  <Pencil size={12} />
-                </button>
-                <button className="btn btn-danger btn-icon btn-sm" onClick={() => deleteTag(tag.id)} title="Delete Tag">
-                  <Trash2 size={12} />
-                </button>
-              </div>
+
+              <Link
+                href={`/transactions?tag=${encodeURIComponent(tag.name)}`}
+                className="btn btn-secondary btn-sm"
+                style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}
+              >
+                <ArrowLeftRight size={11} /> View Transactions
+              </Link>
             </div>
           ))}
         </div>
       )}
 
-      {/* Rule Modal */}
+      {/* Rule Modal Portaled */}
       {showRuleModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowRuleModal(false)}>
-          <div className="modal slide-up" style={{ maxWidth: 640 }}>
-            <div className="modal-header">
-              <div className="modal-title">{editRule ? 'Edit Rule' : 'New Classification Rule'}</div>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowRuleModal(false)}>✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="grid-2">
-                <div className="field">
-                  <label className="field-label">Rule Name <span className="field-required">*</span></label>
-                  <input className="input" placeholder="e.g. Swiggy Food Orders" value={ruleName} onChange={e => setRuleName(e.target.value)} />
-                </div>
-                <div className="field">
-                  <label className="field-label">Evaluation Priority (1 = first)</label>
-                  <input type="number" className="input" value={rulePriority} onChange={e => setRulePriority(+e.target.value)} min={1} />
-                </div>
+        <ModalPortal>
+          <div
+            className="modal-backdrop"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 999999,
+              padding: 16,
+            }}
+            onClick={e => e.target === e.currentTarget && setShowRuleModal(false)}
+          >
+            <div className="modal slide-up" style={{ maxWidth: 640, width: '100%', background: '#ffffff' }}>
+              <div className="modal-header">
+                <div className="modal-title">{editRule ? 'Edit Rule' : 'New Classification Rule'}</div>
+                <button className="btn btn-ghost btn-icon" onClick={() => setShowRuleModal(false)}>✕</button>
               </div>
-
-              <div>
-                <div className="section-title">Matching Conditions (ALL must match)</div>
-                {ruleConditions.map((cond, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                    <select
-                      className="select"
-                      style={{ width: 140 }}
-                      value={cond.field}
-                      onChange={e => { const nc = [...ruleConditions]; nc[idx].field = e.target.value as RuleField; setRuleConditions(nc) }}
-                    >
-                      {FIELD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                    <select
-                      className="select"
-                      style={{ width: 120 }}
-                      value={cond.op}
-                      onChange={e => { const nc = [...ruleConditions]; nc[idx].op = e.target.value as RuleOp; setRuleConditions(nc) }}
-                    >
-                      {OP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                    <input
-                      className="input"
-                      placeholder="Keyword / string to match"
-                      value={cond.value}
-                      onChange={e => { const nc = [...ruleConditions]; nc[idx].value = e.target.value; setRuleConditions(nc) }}
-                    />
-                    {ruleConditions.length > 1 && (
-                      <button className="btn btn-danger btn-icon btn-sm" onClick={() => setRuleConditions(c => c.filter((_, i) => i !== idx))}>
-                        <X size={12} />
-                      </button>
-                    )}
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div className="grid-2">
+                  <div className="field">
+                    <label className="field-label">Rule Name <span className="field-required">*</span></label>
+                    <input className="input" placeholder="e.g. Swiggy Food Orders" value={ruleName} onChange={e => setRuleName(e.target.value)} />
                   </div>
-                ))}
-                <button className="btn btn-ghost btn-sm" onClick={() => setRuleConditions(c => [...c, { ...EMPTY_CONDITION }])}>
-                  <Plus size={12} /> Add Condition
-                </button>
-              </div>
-
-              <div className="field">
-                <label className="field-label">Assigned Tags <span className="field-required">*</span></label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                  {ruleTags.map(t => <TagPill key={t} tag={t} onRemove={() => setRuleTags(tg => tg.filter(x => x !== t))} />)}
+                  <div className="field">
+                    <label className="field-label">Evaluation Priority (1 = first)</label>
+                    <input type="number" className="input" value={rulePriority} onChange={e => setRulePriority(+e.target.value)} min={1} />
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    className="input"
-                    placeholder="Type tag name and press Enter"
-                    value={ruleTagInput}
-                    onChange={e => setRuleTagInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && ruleTagInput.trim()) {
-                        setRuleTags(t => [...new Set([...t, ruleTagInput.trim().toLowerCase()])])
-                        setRuleTagInput('')
-                      }
-                    }}
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      if (ruleTagInput.trim()) {
-                        setRuleTags(t => [...new Set([...t, ruleTagInput.trim().toLowerCase()])])
-                        setRuleTagInput('')
-                      }
-                    }}
-                  >
-                    Add
+
+                <div>
+                  <div className="section-title">Matching Conditions (ALL must match)</div>
+                  {ruleConditions.map((cond, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                      <select
+                        className="select"
+                        style={{ width: 140 }}
+                        value={cond.field}
+                        onChange={e => { const nc = [...ruleConditions]; nc[idx].field = e.target.value as RuleField; setRuleConditions(nc) }}
+                      >
+                        {FIELD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                      <select
+                        className="select"
+                        style={{ width: 120 }}
+                        value={cond.op}
+                        onChange={e => { const nc = [...ruleConditions]; nc[idx].op = e.target.value as RuleOp; setRuleConditions(nc) }}
+                      >
+                        {OP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                      <input
+                        className="input"
+                        placeholder="Keyword / string to match"
+                        value={cond.value}
+                        onChange={e => { const nc = [...ruleConditions]; nc[idx].value = e.target.value; setRuleConditions(nc) }}
+                      />
+                      {ruleConditions.length > 1 && (
+                        <button className="btn btn-danger btn-icon btn-sm" onClick={() => setRuleConditions(c => c.filter((_, i) => i !== idx))}>
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost btn-sm" onClick={() => setRuleConditions(c => [...c, { ...EMPTY_CONDITION }])}>
+                    <Plus size={12} /> Add Condition
                   </button>
                 </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowRuleModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveRule} disabled={!ruleName || ruleConditions.some(c => !c.value) || ruleTags.length === 0 || saving}>
-                {saving ? 'Saving…' : editRule ? 'Save Changes' : 'Create Rule'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Tag Modal */}
-      {showTagModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowTagModal(false)}>
-          <div className="modal slide-up" style={{ maxWidth: 380 }}>
-            <div className="modal-header">
-              <div className="modal-title">{editTag ? 'Edit Tag' : 'New Tag'}</div>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowTagModal(false)}>✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="field">
-                <label className="field-label">Tag Name <span className="field-required">*</span></label>
-                <input
-                  className="input"
-                  placeholder="e.g. groceries, dining, utilities"
-                  value={tagName}
-                  onChange={e => setTagName(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label className="field-label">Color Swatch</label>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <input
-                    type="color"
-                    className="input"
-                    value={tagColor}
-                    onChange={e => setTagColor(e.target.value)}
-                    style={{ width: 44, height: 36, padding: 2, cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{tagColor}</span>
+                <div className="field">
+                  <label className="field-label">Assigned Tags <span className="field-required">*</span></label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {ruleTags.map(t => <TagPill key={t} tag={t} onRemove={() => setRuleTags(tg => tg.filter(x => x !== t))} />)}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      className="input"
+                      placeholder="Type tag name and press Enter"
+                      value={ruleTagInput}
+                      onChange={e => setRuleTagInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && ruleTagInput.trim()) {
+                          setRuleTags(t => [...new Set([...t, ruleTagInput.trim().toLowerCase()])])
+                          setRuleTagInput('')
+                        }
+                      }}
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        if (ruleTagInput.trim()) {
+                          setRuleTags(t => [...new Set([...t, ruleTagInput.trim().toLowerCase()])])
+                          setRuleTagInput('')
+                        }
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowTagModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveTag} disabled={!tagName || saving}>
-                {saving ? 'Saving…' : editTag ? 'Save Changes' : 'Create Tag'}
-              </button>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowRuleModal(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={saveRule} disabled={!ruleName || ruleConditions.some(c => !c.value) || ruleTags.length === 0 || saving}>
+                  {saving ? 'Saving…' : editRule ? 'Save Changes' : 'Create Rule'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
+      )}
+
+      {/* Tag Modal Portaled */}
+      {showTagModal && (
+        <ModalPortal>
+          <div
+            className="modal-backdrop"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 999999,
+              padding: 16,
+            }}
+            onClick={e => e.target === e.currentTarget && setShowTagModal(false)}
+          >
+            <div className="modal slide-up" style={{ maxWidth: 380, width: '100%', background: '#ffffff' }}>
+              <div className="modal-header">
+                <div className="modal-title">{editTag ? 'Edit Tag' : 'New Tag'}</div>
+                <button className="btn btn-ghost btn-icon" onClick={() => setShowTagModal(false)}>✕</button>
+              </div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="field">
+                  <label className="field-label">Tag Name <span className="field-required">*</span></label>
+                  <input
+                    className="input"
+                    placeholder="e.g. groceries, dining, utilities"
+                    value={tagName}
+                    onChange={e => setTagName(e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Color Swatch</label>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      className="input"
+                      value={tagColor}
+                      onChange={e => setTagColor(e.target.value)}
+                      style={{ width: 44, height: 36, padding: 2, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{tagColor}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowTagModal(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={saveTag} disabled={!tagName || saving}>
+                  {saving ? 'Saving…' : editTag ? 'Save Changes' : 'Create Tag'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
     </div>
   )

@@ -1,12 +1,30 @@
+import postgres from 'postgres'
 import { neon } from '@neondatabase/serverless'
 import { Account, Transaction, Tag, TagRule, AccountType } from '@/lib/types'
+
+// Global client cache across hot reloads
+const globalForDb = global as unknown as { sqlClient?: any }
 
 export function getDb() {
   const url = process.env.DATABASE_URL
   if (!url) {
     throw new Error('DATABASE_URL is not set in environment variables (.env.local)')
   }
-  return neon(url)
+
+  if (url.includes('neon.tech')) {
+    return neon(url)
+  }
+
+  if (!globalForDb.sqlClient) {
+    globalForDb.sqlClient = postgres(url, {
+      ssl: url.includes('localhost') || url.includes('127.0.0.1') ? false : 'require',
+      max: 10,
+      idle_timeout: 30,
+      connect_timeout: 15,
+    })
+  }
+
+  return globalForDb.sqlClient
 }
 
 /**

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -19,11 +19,28 @@ import {
   HelpCircle,
   FileText,
   ShieldCheck,
+  AlertTriangle,
+  ArrowLeftRight,
+  Copy,
+  BarChart3,
+  TrendingUp,
+  RefreshCw,
+  X,
 } from 'lucide-react'
 import { Account, TagRule, COLUMN_MAP_FIELDS, ParsedRow } from '@/lib/types'
 import { parseXlsx, parseCsv, autoDetectColumns, parseRows } from '@/lib/parsers'
 import { runRulesEngine, extractUpiInfo } from '@/lib/tagger/engine'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import TagPill from '@/components/tags/TagPill'
+import TagPickerModal from '@/components/tags/TagPickerModal'
+import {
+  TxLike,
+  BatchDuplicateResult,
+  TransferMatch,
+  batchFindDuplicates,
+  detectInternalTransfers,
+  findDuplicates,
+} from '@/lib/duplicate-detector'
 
 type Step = 'drop' | 'map' | 'preview' | 'importing' | 'done' | 'manual'
 
@@ -60,11 +77,35 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  // ── Tag state & refreshing ─────────────────────────────────────────────
+  const [currentRules, setCurrentRules] = useState<TagRule[]>(rules)
+  const [currentTagMap, setCurrentTagMap] = useState<Record<string, { name: string; color: string; icon: string }>>(tagMap)
+  const [availableTags, setAvailableTags] = useState<{ name: string; color: string; icon?: string }[]>(() =>
+    Object.values(tagMap)
+  )
+  const [editingRowIdx, setEditingRowIdx] = useState<number | null>(null)
+  const [refreshingTags, setRefreshingTags] = useState(false)
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null)
+  const [showStandaloneTagModal, setShowStandaloneTagModal] = useState(false)
+
+  // ── Duplicate detection state ──────────────────────────────────────────
+  const [dupResults, setDupResults] = useState<BatchDuplicateResult[]>([])
+  const [transfers, setTransfers] = useState<TransferMatch[]>([])
+  const [dupLoading, setDupLoading] = useState(false)
+  const [skipDuplicates, setSkipDuplicates] = useState(true)
+  // Manual entry duplicate warning
+  const [manualDupWarning, setManualDupWarning] = useState<{ description: string; date: string; amount: number } | null>(null)
+  const [manualDupChecked, setManualDupChecked] = useState(false)
+
   useEffect(() => {
     const tab = searchParams?.get('tab')
+    const acc = searchParams?.get('account')
+    if (acc && accounts.some(a => a.id === acc)) {
+      setSelectedAccount(acc)
+    }
     if (tab === 'manual') setStep('manual')
     else if (tab === 'statement') setStep('drop')
-  }, [searchParams])
+  }, [searchParams, accounts])
 
   // Manual entry state
   const [manualForm, setManualForm] = useState({
@@ -75,6 +116,16 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
     ref_no: '',
   })
   const [manualSaving, setManualSaving] = useState(false)
+
+  // ── Fetch existing transactions for duplicate detection ────────────────
+  const fetchExistingForDupCheck = useCallback(async (accountId: string): Promise<TxLike[]> => {
+    try {
+      const res = await fetch(`/api/transactions/check-duplicates?account_id=${accountId}&days=30`)
+      if (!res.ok) return []
+      const data = await res.json()
+      return data.transactions || []
+    } catch { return [] }
+  }, [])
 
   async function handleFile(file: File) {
     setError('')
@@ -111,15 +162,134 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
     if (file) handleFile(file)
   }
 
-  function handlePreview() {
+  async function handlePreview() {
     const parsed = parseRows(rawRows, columnMap)
     if (parsed.length === 0) {
       setError('Could not extract any valid transactions. Please check column mapping.')
       return
     }
     setError('')
+
+    // Evaluate rules on parsed statement rows immediately for preview
+    for (const r of parsed) {
+      r.tags = []
+      r.tag_source = null
+    }
+    runRulesEngine(parsed as any, currentRules)
+
     setParsedRows(parsed)
     setStep('preview')
+
+    // Run duplicate detection against existing transactions
+    setDupLoading(true)
+    try {
+      // Check against same account's existing transactions (last 30 days)
+      const existing = await fetchExistingForDupCheck(selectedAccount)
+
+      // Also fetch all accounts' transactions for transfer detection
+      const allRes = await fetch(`/api/transactions/check-duplicates?account_id=all&days=7`)
+      const allData = allRes.ok ? await allRes.json() : { transactions: [] }
+      const allExisting: TxLike[] = allData.transactions || []
+
+      // Convert parsed rows to TxLike for detection
+      const incoming: TxLike[] = parsed.map((r, i) => ({
+        id: `new-${i}`,
+        account_id: selectedAccount,
+        date: r.date,
+        amount: r.amount,
+        type: r.type as 'credit' | 'debit',
+        description: r.description,
+        ref_no: r.ref_no || null,
+        upi_vpa: r.upi_vpa || null,
+      }))
+
+      // 1. Find duplicates against existing DB rows
+      const dupBatch = batchFindDuplicates(incoming, existing)
+      setDupResults(dupBatch)
+
+      // 2. Detect internal transfers among all (incoming + existing from all accounts)
+      const allCombined: TxLike[] = [...incoming, ...allExisting]
+      const transferMatches = detectInternalTransfers(allCombined)
+        .filter(t => t.debitId.startsWith('new-') || t.creditId.startsWith('new-'))
+      setTransfers(transferMatches)
+    } finally {
+      setDupLoading(false)
+    }
+  }
+
+  async function handleRefreshStatementTags() {
+    setRefreshingTags(true)
+    setRefreshMessage(null)
+    try {
+      const [rulesRes, tagsRes] = await Promise.all([
+        fetch('/api/rules'),
+        fetch('/api/tags'),
+      ])
+
+      let activeRules = currentRules
+      if (rulesRes.ok) {
+        const data = await rulesRes.json()
+        if (Array.isArray(data.rules)) {
+          activeRules = data.rules
+          setCurrentRules(data.rules)
+        }
+      }
+
+      if (tagsRes.ok) {
+        const data = await tagsRes.json()
+        if (Array.isArray(data.tags)) {
+          const map = Object.fromEntries(data.tags.map((t: any) => [t.name, t]))
+          setCurrentTagMap(map)
+          setAvailableTags(data.tags)
+        }
+      }
+
+      // Re-run rules on parsed rows (preserve user-selected manual tags)
+      const updated = [...parsedRows]
+      for (const r of updated) {
+        if (r.tag_source !== 'manual') {
+          r.tags = []
+          r.tag_source = null
+        }
+      }
+      runRulesEngine(updated as any, activeRules)
+      setParsedRows(updated)
+
+      const totalTagged = updated.filter(r => (r.tags || []).length > 0).length
+      setRefreshMessage(`✓ Tags refreshed! ${totalTagged} of ${updated.length} transactions now categorized.`)
+      setTimeout(() => setRefreshMessage(null), 6000)
+    } catch (err: any) {
+      setRefreshMessage(`Failed to refresh tags: ${err.message}`)
+    } finally {
+      setRefreshingTags(false)
+    }
+  }
+
+  function handleSaveRowTags(newTags: string[]) {
+    if (editingRowIdx === null) return
+    setParsedRows(prev => {
+      const copy = [...prev]
+      if (copy[editingRowIdx]) {
+        copy[editingRowIdx] = {
+          ...copy[editingRowIdx],
+          tags: newTags,
+          tag_source: 'manual',
+        }
+      }
+      return copy
+    })
+    setEditingRowIdx(null)
+  }
+
+  function handleTagCreated(newTag: { name: string; color: string }) {
+    setAvailableTags(prev => {
+      if (prev.some(t => t.name === newTag.name)) return prev
+      return [...prev, { name: newTag.name, color: newTag.color, icon: '' }]
+    })
+    setCurrentTagMap(prev => ({
+      ...prev,
+      [newTag.name]: { name: newTag.name, color: newTag.color, icon: '' },
+    }))
   }
 
   async function handleImport() {
@@ -127,7 +297,8 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
     setStep('importing')
     setProgress(15)
 
-    const txObjects = parsedRows.map(row => ({
+    let txObjects = parsedRows.map((row, i) => ({
+      _idx: i,
       account_id: selectedAccount,
       date: row.date,
       description: row.description,
@@ -137,13 +308,20 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
       upi_vpa: row.upi_vpa,
       upi_name: row.upi_name,
       ref_no: row.ref_no,
-      tags: [] as string[],
-      tag_source: null as null | string,
+      tags: row.tags && row.tags.length > 0 ? [...row.tags] : ([] as string[]),
+      tag_source: row.tag_source || (null as null | string),
       raw_row: row.raw_row,
     }))
 
+    // Skip confirmed duplicates if toggle is on
+    if (skipDuplicates && dupResults.length > 0) {
+      txObjects = txObjects.filter((_, i) => !dupResults[i]?.isDuplicate)
+    }
+
     setProgress(35)
-    const ruleTagged = runRulesEngine(txObjects as any, rules)
+    // Run rules engine only on rows that are not yet tagged
+    const untaggedForRules = txObjects.filter((t: any) => t.tags.length === 0)
+    const ruleTagged = runRulesEngine(untaggedForRules as any, currentRules)
     const untagged = txObjects.filter((t: any) => t.tags.length === 0)
 
     setProgress(60)
@@ -219,11 +397,38 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
     router.refresh()
   }
 
-  async function handleManualSave() {
+  async function handleManualSave(forceOverride = false) {
     if (!selectedAccount) { setError('Select an account'); return }
     if (!manualForm.description.trim()) { setError('Enter description'); return }
     if (!manualForm.amount || isNaN(+manualForm.amount)) { setError('Enter valid amount'); return }
 
+    // ── Duplicate check before saving ──────────────────────────────────────
+    if (!forceOverride && !manualDupChecked) {
+      const existing = await fetchExistingForDupCheck(selectedAccount)
+      const incoming: TxLike = {
+        account_id: selectedAccount,
+        date: manualForm.date,
+        amount: parseFloat(manualForm.amount),
+        type: manualForm.type,
+        description: manualForm.description.trim(),
+        ref_no: manualForm.ref_no || null,
+        upi_vpa: null,
+      }
+      const matches = findDuplicates(incoming, existing)
+      if (matches.length > 0 && matches[0].confidence >= 0.7) {
+        const m = matches[0]
+        setManualDupWarning({
+          description: m.existingDescription,
+          date: m.existingDate,
+          amount: m.existingAmount,
+        })
+        setManualDupChecked(true)
+        return   // pause — user must confirm
+      }
+    }
+
+    setManualDupWarning(null)
+    setManualDupChecked(false)
     setManualSaving(true)
     setError('')
 
@@ -460,16 +665,103 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
       {/* STEP 3: PREVIEW */}
       {step === 'preview' && (
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          {/* Duplicate + Transfer Summary */}
+          {dupLoading && (
+            <div style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Loader2 size={13} className="spin" /> Scanning for duplicates and internal transfers…
+            </div>
+          )}
+
+          {!dupLoading && dupResults.some(d => d.isDuplicate || d.isSuspect) && (
+            <div style={{ background: 'var(--amber-subtle)', border: '1px solid rgba(217,119,6,0.3)', borderRadius: 'var(--radius)', padding: '12px 16px', marginBottom: 12, fontSize: 12 }}>
+              <div style={{ fontWeight: 700, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <AlertTriangle size={14} />
+                Possible Duplicates Detected
+              </div>
+              <div style={{ color: 'var(--text-secondary)' }}>
+                <strong style={{ color: 'var(--amber)' }}>{dupResults.filter(d => d.isDuplicate).length}</strong> likely duplicates (🔴) and{' '}
+                <strong>{dupResults.filter(d => d.isSuspect && !d.isDuplicate).length}</strong> suspects (🟡) found against your last 30 days.
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={skipDuplicates}
+                    onChange={e => setSkipDuplicates(e.target.checked)}
+                  />
+                  <strong>Auto-skip duplicates (confidence ≥ 85%)</strong>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {!dupLoading && transfers.length > 0 && (
+            <div style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent-dim)', borderRadius: 'var(--radius)', padding: '12px 16px', marginBottom: 12, fontSize: 12 }}>
+              <div style={{ fontWeight: 700, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <ArrowLeftRight size={14} />
+                Internal Transfers Detected
+              </div>
+              <div style={{ color: 'var(--text-secondary)' }}>
+                {transfers.length} transfer{transfers.length !== 1 ? 's' : ''} detected between your accounts (same amount, within 3 days).
+                These are flagged as <strong>↔ Transfer</strong> and will be excluded from Income/Expense totals.
+              </div>
+            </div>
+          )}
+
+          {refreshMessage && (
+            <div
+              style={{
+                background: 'var(--green-subtle, rgba(22,163,74,0.08))',
+                border: '1px solid rgba(22,163,74,0.25)',
+                borderRadius: 'var(--radius)',
+                padding: '10px 16px',
+                fontSize: 12.5,
+                color: 'var(--green, #16a34a)',
+                fontWeight: 600,
+                marginBottom: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{refreshMessage}</span>
+              <button onClick={() => setRefreshMessage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
               Ready to ingest <strong style={{ color: 'var(--text-primary)' }}>{parsedRows.length.toLocaleString()}</strong> transactions from <strong style={{ color: 'var(--text-primary)' }}>{filename}</strong>
+              {skipDuplicates && dupResults.filter(d => d.isDuplicate).length > 0 && (
+                <span style={{ marginLeft: 8, color: 'var(--amber)', fontWeight: 600 }}>
+                  ({dupResults.filter(d => d.isDuplicate).length} duplicates will be skipped)
+                </span>
+              )}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={handleRefreshStatementTags}
+                disabled={refreshingTags}
+                title="Re-run rules engine across all rows in this statement"
+              >
+                {refreshingTags ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+                {refreshingTags ? 'Refreshing Tags…' : 'Refresh Tags'}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowStandaloneTagModal(true)}
+                title="Create a new custom tag"
+              >
+                <Plus size={13} /> Custom Tag
+              </button>
               <button className="btn btn-secondary" onClick={() => setStep('map')}>
                 <ArrowLeft size={13} /> Back
               </button>
               <button className="btn btn-primary" onClick={handleImport}>
-                Confirm & Import {parsedRows.length.toLocaleString()} Entries <ArrowRight size={13} />
+                Confirm & Import <ArrowRight size={13} />
               </button>
             </div>
           </div>
@@ -479,27 +771,100 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
               <table>
                 <thead>
                   <tr>
+                    <th style={{ width: 28 }}></th>
                     <th>Date</th>
                     <th>Description</th>
+                    <th>Tags</th>
                     <th>UPI VPA</th>
                     <th>Reference</th>
                     <th style={{ textAlign: 'right' }}>Amount (₹)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {parsedRows.slice(0, 50).map((row, i) => (
-                    <tr key={i}>
-                      <td className="td-date">{formatDate(row.date)}</td>
-                      <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{row.description}</td>
-                      <td className="td-muted" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{row.upi_vpa || '—'}</td>
-                      <td className="td-muted" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{row.ref_no || '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span className={`td-mono ${row.type === 'credit' ? 'amount-credit' : 'amount-debit'}`}>
-                          {row.type === 'credit' ? '+' : '−'}{formatCurrency(row.amount)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {parsedRows.slice(0, 100).map((row, i) => {
+                    const dup = dupResults[i]
+                    const isTransfer = transfers.some(t => t.debitId === `new-${i}` || t.creditId === `new-${i}`)
+                    const isDuplicate = dup?.isDuplicate
+                    const isSuspect  = dup?.isSuspect && !isDuplicate
+                    return (
+                      <tr
+                        key={i}
+                        style={{
+                          opacity: isDuplicate && skipDuplicates ? 0.4 : 1,
+                          background: isDuplicate ? 'rgba(220,38,38,0.04)' : isSuspect ? 'rgba(217,119,6,0.04)' : isTransfer ? 'rgba(37,99,235,0.04)' : undefined,
+                        }}
+                      >
+                        <td style={{ padding: '4px 8px', width: 28 }}>
+                          {isDuplicate && <span title={`Likely duplicate — confidence ${Math.round((dup.matches[0]?.confidence || 0) * 100)}%`} style={{ cursor: 'help' }}>🔴</span>}
+                          {isSuspect  && <span title={`Possible duplicate — confidence ${Math.round((dup.matches[0]?.confidence || 0) * 100)}%`} style={{ cursor: 'help' }}>🟡</span>}
+                          {isTransfer && <span title="Internal transfer detected">↔</span>}
+                        </td>
+                        <td className="td-date">{formatDate(row.date)}</td>
+                        <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                          {row.description}
+                          {isDuplicate && dup.matches[0] && (
+                            <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 2 }}>
+                              Matches: "{dup.matches[0].existingDescription.slice(0, 40)}" on {formatDate(dup.matches[0].existingDate)}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <div
+                            onClick={() => setEditingRowIdx(i)}
+                            style={{
+                              display: 'inline-flex',
+                              flexWrap: 'wrap',
+                              gap: 4,
+                              alignItems: 'center',
+                              cursor: 'pointer',
+                              padding: '3px 6px',
+                              borderRadius: 6,
+                              border: '1px solid transparent',
+                              transition: 'all 0.12s ease',
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.borderColor = 'var(--border)'
+                              e.currentTarget.style.background = 'var(--bg-subtle)'
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.borderColor = 'transparent'
+                              e.currentTarget.style.background = 'transparent'
+                            }}
+                            title="Click to select or change tags for this statement row"
+                          >
+                            {row.tags && row.tags.length > 0 ? (
+                              row.tags.map(t => (
+                                <TagPill key={t} tag={t} color={currentTagMap[t]?.color} small />
+                              ))
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--text-muted)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 3,
+                                  padding: '2px 6px',
+                                  borderRadius: 4,
+                                  border: '1px dashed var(--border)',
+                                  background: 'var(--bg-subtle)',
+                                }}
+                              >
+                                <Plus size={10} /> Tag
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="td-muted" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{row.upi_vpa || '—'}</td>
+                        <td className="td-muted" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{row.ref_no || '—'}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <span className={`td-mono ${row.type === 'credit' ? 'amount-credit' : 'amount-debit'}`}>
+                            {row.type === 'credit' ? '+' : '−'}{formatCurrency(row.amount)}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -517,7 +882,7 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
             Processing Bank Statement…
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 24 }}>
-            Applying deterministic classification rules, reconciling UPI strings, writing to Neon PostgreSQL…
+            Matching your custom rules, organizing transaction descriptions, and updating your accounts…
           </div>
           <div className="progress" style={{ width: '100%', height: 6 }}>
             <div className="progress-bar" style={{ width: `${progress}%` }} />
@@ -560,12 +925,21 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
             <button className="btn btn-secondary" onClick={() => { setStep('drop'); setResult(null); setProgress(0) }}>
-              Import Another Statement
+              <UploadCloud size={13} /> Import Another
             </button>
-            <Link href="/transactions" className="btn btn-primary">
-              Open Transaction Ledger <ArrowRight size={13} />
+            <Link href={`/transactions?account=${selectedAccount}`} className="btn btn-primary">
+              <ArrowLeftRight size={13} /> View in Ledger
+            </Link>
+            <Link href={`/analytics?account=${selectedAccount}`} className="btn btn-secondary">
+              <BarChart3 size={13} /> View Analytics
+            </Link>
+            <Link href="/tags" className="btn btn-secondary">
+              <Sparkles size={13} /> Rules & Tags
+            </Link>
+            <Link href="/networth" className="btn btn-secondary">
+              <TrendingUp size={13} /> Net Worth
             </Link>
           </div>
         </div>
@@ -586,7 +960,7 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
                   type="date"
                   className="input"
                   value={manualForm.date}
-                  onChange={e => setManualForm(f => ({ ...f, date: e.target.value }))}
+                  onChange={e => { setManualForm(f => ({ ...f, date: e.target.value })); setManualDupWarning(null); setManualDupChecked(false) }}
                 />
               </div>
               <div className="field">
@@ -594,7 +968,7 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
                 <select
                   className="select"
                   value={manualForm.type}
-                  onChange={e => setManualForm(f => ({ ...f, type: e.target.value as any }))}
+                  onChange={e => { setManualForm(f => ({ ...f, type: e.target.value as any })); setManualDupWarning(null); setManualDupChecked(false) }}
                 >
                   <option value="debit">Debit (Outflow / Expense)</option>
                   <option value="credit">Credit (Inflow / Income)</option>
@@ -608,7 +982,7 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
                 className="input"
                 placeholder="e.g. UPI-Swiggy-swiggy@icici-Food Order"
                 value={manualForm.description}
-                onChange={e => setManualForm(f => ({ ...f, description: e.target.value }))}
+                onChange={e => { setManualForm(f => ({ ...f, description: e.target.value })); setManualDupWarning(null); setManualDupChecked(false) }}
               />
             </div>
 
@@ -622,7 +996,7 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
                   min="0"
                   step="0.01"
                   value={manualForm.amount}
-                  onChange={e => setManualForm(f => ({ ...f, amount: e.target.value }))}
+                  onChange={e => { setManualForm(f => ({ ...f, amount: e.target.value })); setManualDupWarning(null); setManualDupChecked(false) }}
                 />
               </div>
               <div className="field">
@@ -636,16 +1010,80 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
               </div>
             </div>
 
-            <button
-              className="btn btn-primary"
-              onClick={handleManualSave}
-              disabled={manualSaving || !manualForm.description || !manualForm.amount || !selectedAccount}
-              style={{ alignSelf: 'flex-start', marginTop: 4 }}
-            >
-              {manualSaving ? <><Loader2 size={13} className="spin" /> Saving…</> : 'Save Transaction'}
-            </button>
+            {/* ── Duplicate warning inline ─────────────────────────────────── */}
+            {manualDupWarning && (
+              <div style={{ background: 'var(--amber-subtle)', border: '1px solid rgba(217,119,6,0.35)', borderRadius: 'var(--radius)', padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: 'var(--amber)', marginBottom: 6, fontSize: 13 }}>
+                  <AlertTriangle size={14} />
+                  Possible Duplicate Detected
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  A similar transaction already exists in your ledger:
+                </div>
+                <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.7)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: 12 }}>
+                  <div style={{ fontWeight: 600 }}>{manualDupWarning.description}</div>
+                  <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
+                    {formatDate(manualDupWarning.date)} · {formatCurrency(manualDupWarning.amount)}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => { setManualDupWarning(null); setManualDupChecked(false) }}
+                    style={{ fontSize: 12 }}
+                  >
+                    Cancel — Don't Save
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleManualSave(true)}
+                    disabled={manualSaving}
+                    style={{ fontSize: 12 }}
+                  >
+                    <Copy size={12} /> Save Anyway (It's Different)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!manualDupWarning && (
+              <button
+                className="btn btn-primary"
+                onClick={() => handleManualSave(false)}
+                disabled={manualSaving || !manualForm.description || !manualForm.amount || !selectedAccount}
+                style={{ alignSelf: 'flex-start', marginTop: 4 }}
+              >
+                {manualSaving ? <><Loader2 size={13} className="spin" /> Saving…</> : 'Save Transaction'}
+              </button>
+            )}
           </div>
         </div>
+      )}
+      {/* Tag Picker Modal for statement rows */}
+      {editingRowIdx !== null && parsedRows[editingRowIdx] && (
+        <TagPickerModal
+          isOpen={editingRowIdx !== null}
+          onClose={() => setEditingRowIdx(null)}
+          currentTags={parsedRows[editingRowIdx].tags || []}
+          availableTags={availableTags}
+          onSave={handleSaveRowTags}
+          onTagCreated={handleTagCreated}
+          title="Select or Change Statement Tags"
+          subtitle={`${parsedRows[editingRowIdx].description} · ${formatDate(parsedRows[editingRowIdx].date)} · ${formatCurrency(parsedRows[editingRowIdx].amount)}`}
+        />
+      )}
+
+      {/* Standalone Custom Tag Creator */}
+      {showStandaloneTagModal && (
+        <TagPickerModal
+          isOpen={showStandaloneTagModal}
+          onClose={() => setShowStandaloneTagModal(false)}
+          currentTags={[]}
+          availableTags={availableTags}
+          onSave={() => setShowStandaloneTagModal(false)}
+          onTagCreated={handleTagCreated}
+          title="Create New Custom Tag"
+        />
       )}
     </div>
   )

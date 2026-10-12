@@ -96,6 +96,8 @@ export interface ParsedRow {
   upi_name: string | null
   ref_no: string | null
   raw_row: Record<string, unknown>
+  tags?: string[]
+  tag_source?: TagSource | null
 }
 
 export interface MonthlyStats {

@@ -46,21 +46,36 @@ export function computeMonthlyStats(
   transactions: Transaction[] = [],
   months = 12
 ): MonthlyStats[] {
-  const now = new Date()
   const stats: Record<string, MonthlyStats> = {}
   const txList = transactions || []
+  const now = new Date()
 
-  // Initialize last N months
-  for (let i = months - 1; i >= 0; i--) {
-    const d = subMonths(now, i)
-    const key = format(d, 'yyyy-MM')
-    stats[key] = { month: key, income: 0, expense: 0, net: 0 }
+  // First, check if transactions exist and find their date range
+  const validDates = txList
+    .map(t => t?.date?.substring(0, 7))
+    .filter((d): d is string => Boolean(d && d.length === 7))
+    .sort()
+
+  if (validDates.length > 0) {
+    // If transactions span a specific window, ensure every transaction's month is present
+    for (const key of Array.from(new Set(validDates))) {
+      stats[key] = { month: key, income: 0, expense: 0, net: 0 }
+    }
+  } else {
+    // Initialize default last N months
+    for (let i = months - 1; i >= 0; i--) {
+      const d = subMonths(now, i)
+      const key = format(d, 'yyyy-MM')
+      stats[key] = { month: key, income: 0, expense: 0, net: 0 }
+    }
   }
 
   for (const tx of txList) {
     if (!tx?.date) continue
     const key = getMonthKey(tx.date)
-    if (!stats[key]) continue
+    if (!stats[key]) {
+      stats[key] = { month: key, income: 0, expense: 0, net: 0 }
+    }
     if (tx.type === 'credit') {
       stats[key].income += (Number(tx.amount) || 0)
     } else {
@@ -69,7 +84,7 @@ export function computeMonthlyStats(
     stats[key].net = stats[key].income - stats[key].expense
   }
 
-  return Object.values(stats)
+  return Object.values(stats).sort((a, b) => a.month.localeCompare(b.month))
 }
 
 export function computeCategoryStats(
@@ -99,9 +114,7 @@ export function computeCategoryStats(
   return Object.values(stats).sort((a, b) => b.amount - a.amount)
 }
 
-export function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ')
-}
+export { cn } from './cn'
 
 export function truncate(str: string, n: number): string {
   return str.length > n ? str.slice(0, n - 1) + '…' : str

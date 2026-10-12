@@ -34,19 +34,19 @@ export default function SettingsPage() {
         </button>
       </div>
 
-      {/* AI Fallback */}
+      {/* Automated Tagging Rules */}
       <div className="card mb-4">
         <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)' }}>
           <Sparkles size={15} style={{ color: 'var(--accent)' }} />
-          Automated Classification Engine
+          Automatic Transaction Categorization
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.6 }}>
-          Statement entries first match against your prioritized deterministic rules. Unmatched entries optionally fallback to Gemini AI if <code style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, fontSize: 11.5, fontFamily: 'var(--font-mono)' }}>GEMINI_API_KEY</code> is set in your environment.
+          Transactions match against your custom rules first to automatically assign categories and tags like Food, Rent, Salary, or Shopping.
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--bg-subtle)', padding: '10px 14px', borderRadius: 'var(--radius)' }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', flexShrink: 0 }} />
           <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Deterministic rule engine is active and prioritized.
+            Automatic categorization rules are active.
           </span>
         </div>
       </div>

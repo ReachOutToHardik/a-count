@@ -2,9 +2,9 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'A-Count — Bank Intelligence',
+    name: 'A-Count — Personal Wealth & Finance',
     short_name: 'A-Count',
-    description: 'Personal Bank Statement Manager & Financial Ledger',
+    description: 'Personal Finance, Bank Statement Manager & Net Worth Tracker',
     start_url: '/',
     display: 'standalone',
     background_color: '#f8fafc',

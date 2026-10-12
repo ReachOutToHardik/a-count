@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { extractUpiInfo } from '@/lib/tagger/engine'
 import { Account } from '@/lib/types'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 export default function QuickActionFab() {
   const [isOpen, setIsOpen] = useState(false)
@@ -168,7 +169,7 @@ export default function QuickActionFab() {
 
   return (
     <>
-      {/* Darkened & Blurred backdrop overlay when hovering or clicking the FAB */}
+      {/* Darkened backdrop overlay when hovering or clicking the FAB */}
       {isOpen && (
         <div
           className="fab-hover-backdrop"
@@ -253,146 +254,158 @@ export default function QuickActionFab() {
         </button>
       </div>
 
-      {/* ── Minimalist In-Place Modal ────────────────────────────────────── */}
+      {/* ── Minimalist In-Place Modal Portaled ────────────────────────────── */}
       {showManualModal && (
-        <div
-          className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowManualModal(false)}
-        >
-          <div className="modal slide-up" style={{ maxWidth: 440 }}>
-            <div className="modal-header">
-              <div className="modal-title">New Transaction Entry</div>
-              <button
-                className="btn btn-ghost btn-icon"
-                onClick={() => setShowManualModal(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveManual} className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {error && (
-                <div style={{
-                  background: 'var(--red-subtle)',
-                  border: '1px solid var(--red-border)',
-                  borderRadius: 'var(--radius)',
-                  padding: '8px 12px',
-                  fontSize: 12,
-                  color: 'var(--red)',
-                }}>
-                  {error}
-                </div>
-              )}
-
-              {/* Target Account */}
-              <div className="field">
-                <label className="field-label">Account <span className="field-required">*</span></label>
-                <select
-                  className="select"
-                  value={form.account_id}
-                  onChange={e => setForm(f => ({ ...f, account_id: e.target.value }))}
-                  disabled={loadingAccounts}
-                >
-                  {accounts.length > 0 ? (
-                    accounts.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} ({a.bank_name})
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">{loadingAccounts ? 'Loading accounts…' : 'No accounts available'}</option>
-                  )}
-                </select>
-              </div>
-
-              {/* Date & Type */}
-              <div className="grid-2">
-                <div className="field">
-                  <label className="field-label">Date <span className="field-required">*</span></label>
-                  <input
-                    type="date"
-                    className="input"
-                    value={form.date}
-                    onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="field">
-                  <label className="field-label">Type</label>
-                  <select
-                    className="select"
-                    value={form.type}
-                    onChange={e => setForm(f => ({ ...f, type: e.target.value as any }))}
-                  >
-                    <option value="debit">Debit (− Outflow)</option>
-                    <option value="credit">Credit (+ Inflow)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="field">
-                <label className="field-label">Description / Narration <span className="field-required">*</span></label>
-                <input
-                  className="input"
-                  placeholder="e.g. Swiggy food delivery, AWS hosting, etc."
-                  value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  required
-                />
-              </div>
-
-              {/* Amount & Reference */}
-              <div className="grid-2">
-                <div className="field">
-                  <label className="field-label">Amount (₹) <span className="field-required">*</span></label>
-                  <input
-                    type="number"
-                    className="input"
-                    placeholder="0.00"
-                    step="0.01"
-                    min="0.01"
-                    value={form.amount}
-                    onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="field">
-                  <label className="field-label">Ref / UTR No.</label>
-                  <input
-                    className="input"
-                    placeholder="Optional"
-                    value={form.ref_no}
-                    onChange={e => setForm(f => ({ ...f, ref_no: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="modal-footer" style={{ padding: '12px 0 0 0', marginTop: 4 }}>
+        <ModalPortal>
+          <div
+            className="modal-backdrop"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 999999,
+              padding: 16,
+            }}
+            onClick={e => e.target === e.currentTarget && setShowManualModal(false)}
+          >
+            <div className="modal slide-up" style={{ maxWidth: 440, width: '100%', background: '#ffffff' }}>
+              <div className="modal-header">
+                <div className="modal-title">New Transaction Entry</div>
                 <button
-                  type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-ghost btn-icon"
                   onClick={() => setShowManualModal(false)}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={saving || !form.description || !form.amount || !form.account_id}
-                >
-                  {saveSuccess ? (
-                    <><CheckCircle2 size={14} /> Saved</>
-                  ) : saving ? (
-                    <><Loader2 size={14} className="spin" /> Saving…</>
-                  ) : (
-                    'Record Entry'
-                  )}
+                  ✕
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleSaveManual} className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {error && (
+                  <div style={{
+                    background: 'var(--red-subtle)',
+                    border: '1px solid var(--red-border)',
+                    borderRadius: 'var(--radius)',
+                    padding: '8px 12px',
+                    fontSize: 12,
+                    color: 'var(--red)',
+                  }}>
+                    {error}
+                  </div>
+                )}
+
+                {/* Target Account */}
+                <div className="field">
+                  <label className="field-label">Account <span className="field-required">*</span></label>
+                  <select
+                    className="select"
+                    value={form.account_id}
+                    onChange={e => setForm(f => ({ ...f, account_id: e.target.value }))}
+                    disabled={loadingAccounts}
+                  >
+                    {accounts.length > 0 ? (
+                      accounts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} ({a.bank_name})
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">{loadingAccounts ? 'Loading accounts…' : 'No accounts available'}</option>
+                    )}
+                  </select>
+                </div>
+
+                {/* Date & Type */}
+                <div className="grid-2">
+                  <div className="field">
+                    <label className="field-label">Date <span className="field-required">*</span></label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={form.date}
+                      onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Type</label>
+                    <select
+                      className="select"
+                      value={form.type}
+                      onChange={e => setForm(f => ({ ...f, type: e.target.value as any }))}
+                    >
+                      <option value="debit">Debit (− Outflow)</option>
+                      <option value="credit">Credit (+ Inflow)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="field">
+                  <label className="field-label">Description / Narration <span className="field-required">*</span></label>
+                  <input
+                    className="input"
+                    placeholder="e.g. Swiggy food delivery, AWS hosting, etc."
+                    value={form.description}
+                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                {/* Amount & Reference */}
+                <div className="grid-2">
+                  <div className="field">
+                    <label className="field-label">Amount (₹) <span className="field-required">*</span></label>
+                    <input
+                      type="number"
+                      className="input"
+                      placeholder="0.00"
+                      step="0.01"
+                      min="0.01"
+                      value={form.amount}
+                      onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Ref / UTR No.</label>
+                    <input
+                      className="input"
+                      placeholder="Optional"
+                      value={form.ref_no}
+                      onChange={e => setForm(f => ({ ...f, ref_no: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ padding: '12px 0 0 0', marginTop: 4 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowManualModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={saving || !form.description || !form.amount || !form.account_id}
+                  >
+                    {saveSuccess ? (
+                      <><CheckCircle2 size={14} /> Saved</>
+                    ) : saving ? (
+                      <><Loader2 size={14} className="spin" /> Saving…</>
+                    ) : (
+                      'Record Entry'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </>
   )

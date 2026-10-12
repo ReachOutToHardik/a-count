@@ -6,7 +6,7 @@ import {
   LayoutDashboard,
   Landmark,
   ArrowLeftRight,
-  UploadCloud,
+  TrendingUp,
   BarChart3,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -15,7 +15,7 @@ const MOBILE_TABS = [
   { href: '/',             Icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/accounts',     Icon: Landmark,        label: 'Accounts' },
   { href: '/transactions', Icon: ArrowLeftRight,  label: 'Ledger' },
-  { href: '/import',       Icon: UploadCloud,     label: 'Import' },
+  { href: '/networth',     Icon: TrendingUp,      label: 'Net Worth' },
   { href: '/analytics',    Icon: BarChart3,       label: 'Analytics' },
   { href: '/settings',     Icon: SlidersHorizontal, label: 'Settings' },
 ]

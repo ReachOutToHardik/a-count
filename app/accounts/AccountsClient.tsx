@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Account, AccountType } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
+import ModalPortal from '@/components/ui/ModalPortal'
 import {
   Plus,
   Pencil,
@@ -17,6 +18,11 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
+  ArrowLeftRight,
+  UploadCloud,
+  BarChart3,
+  Sparkles,
+  ShieldCheck,
 } from 'lucide-react'
 
 const ACCOUNT_COLORS = [
@@ -96,17 +102,62 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
     router.refresh()
   }
 
+  // Consolidated ledger balance across all accounts
+  const totalBalance = accounts.reduce((sum, acct) => {
+    const stats = accountStats[acct.id] || { credit: 0, debit: 0, count: 0 }
+    return sum + (stats.credit - stats.debit)
+  }, 0)
+
+  const totalTransactions = accounts.reduce((sum, acct) => {
+    const stats = accountStats[acct.id] || { credit: 0, debit: 0, count: 0 }
+    return sum + stats.count
+  }, 0)
+
   return (
     <div>
       {/* Page Header */}
       <div className="page-header">
         <div>
           <h1 className="page-title">Bank Accounts & Ledgers</h1>
-          <p className="page-subtitle">Manage multi-bank holdings, current balances, and statement history</p>
+          <p className="page-subtitle">Manage multi-bank holdings, live ledger balances, and automated reconciliation</p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>
-          <Plus size={14} /> Add Bank Account
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link href="/networth" className="btn btn-secondary">
+            <TrendingUp size={14} /> View in Net Worth
+          </Link>
+          <Link href="/import" className="btn btn-secondary">
+            <UploadCloud size={14} /> Import Statement
+          </Link>
+          <button className="btn btn-primary" onClick={openNew}>
+            <Plus size={14} /> Add Bank Account
+          </button>
+        </div>
+      </div>
+
+      {/* Summary KPI Strip */}
+      <div className="summary-ribbon" style={{ marginBottom: 20 }}>
+        <div className="summary-item">
+          <span className="summary-item-label">Total Accounts:</span>
+          <span className="summary-item-val">{accounts.length}</span>
+        </div>
+        <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
+        <div className="summary-item">
+          <span className="summary-item-label">Combined Liquid Cash:</span>
+          <span className="summary-item-val" style={{ color: totalBalance >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
+            {formatCurrency(totalBalance, 'INR')}
+          </span>
+        </div>
+        <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
+        <div className="summary-item">
+          <span className="summary-item-label">Total Recorded Txns:</span>
+          <span className="summary-item-val">{totalTransactions.toLocaleString()}</span>
+        </div>
+        <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
+        <div className="summary-item" style={{ marginLeft: 'auto' }}>
+          <Link href="/transactions" style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            View Full Ledger <ArrowRight size={12} />
+          </Link>
+        </div>
       </div>
 
       {/* Account Cards Grid */}
@@ -127,7 +178,24 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
             const stats = accountStats[acct.id] || { credit: 0, debit: 0, count: 0 }
             const balance = stats.credit - stats.debit
             return (
-              <div key={acct.id} className="account-card" style={{ '--account-color': acct.color } as React.CSSProperties}>
+              <div
+                key={acct.id}
+                className="account-card"
+                onClick={() => router.push(`/accounts/${acct.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    router.push(`/accounts/${acct.id}`)
+                  }
+                }}
+                style={{
+                  '--account-color': acct.color,
+                  cursor: 'pointer',
+                } as React.CSSProperties}
+                title={`Click to view ${acct.name} ledger`}
+              >
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{acct.name}</div>
@@ -136,10 +204,22 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(acct)} title="Edit Account">
+                    <button
+                      className="btn btn-ghost btn-icon btn-sm"
+                      onClick={e => {
+                        e.stopPropagation()
+                        openEdit(acct)
+                      }}
+                      title="Edit Account"
+                    >
                       <Pencil size={13} />
                     </button>
-                    <Link href={`/accounts/${acct.id}`} className="btn btn-ghost btn-icon btn-sm" title="View Ledger">
+                    <Link
+                      href={`/accounts/${acct.id}`}
+                      className="btn btn-ghost btn-icon btn-sm"
+                      onClick={e => e.stopPropagation()}
+                      title="View Account Ledger"
+                    >
                       <ArrowRight size={13} />
                     </Link>
                   </div>
@@ -162,7 +242,7 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', paddingTop: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', paddingTop: 8, marginBottom: 12 }}>
                   <span>{stats.count.toLocaleString()} transactions</span>
                   {acct.last_imported_at && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
@@ -171,106 +251,156 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
                   )}
                 </div>
 
-                <button
-                  className="btn btn-danger btn-sm"
-                  onClick={() => handleDelete(acct.id)}
-                  style={{ marginTop: 12, width: '100%', justifyContent: 'center' }}
-                >
-                  <Trash2 size={12} /> Remove Account
-                </button>
+                {/* Deep-link Action Bar */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                  <Link
+                    href={`/transactions?account=${acct.id}`}
+                    className="btn btn-secondary btn-sm"
+                    onClick={e => e.stopPropagation()}
+                    style={{ justifyContent: 'center', fontSize: 11 }}
+                    title="Filter all transactions for this account"
+                  >
+                    <ArrowLeftRight size={12} /> Transactions
+                  </Link>
+                  <Link
+                    href={`/import?account=${acct.id}`}
+                    className="btn btn-secondary btn-sm"
+                    onClick={e => e.stopPropagation()}
+                    style={{ justifyContent: 'center', fontSize: 11 }}
+                    title="Upload statement for this account"
+                  >
+                    <UploadCloud size={12} /> Import
+                  </Link>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <Link
+                    href={`/analytics?account=${acct.id}`}
+                    className="btn btn-ghost btn-sm"
+                    onClick={e => e.stopPropagation()}
+                    style={{ justifyContent: 'center', fontSize: 11 }}
+                  >
+                    <BarChart3 size={12} /> Analytics
+                  </Link>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleDelete(acct.id)
+                    }}
+                    style={{ justifyContent: 'center', fontSize: 11 }}
+                  >
+                    <Trash2 size={12} /> Delete
+                  </button>
+                </div>
               </div>
             )
           })}
         </div>
       )}
 
-      {/* Account Modal */}
+      {/* Account Modal Portaled to Body */}
       {showModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modal slide-up">
-            <div className="modal-header">
-              <div className="modal-title">{editId ? 'Edit Account Details' : 'Add New Bank Account'}</div>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div className="field">
-                  <label className="field-label">Account Label <span className="field-required">*</span></label>
-                  <input
-                    className="input"
-                    placeholder="e.g. HDFC Salary Account"
-                    value={form.name}
-                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  />
-                </div>
-
-                <div className="field">
-                  <label className="field-label">Bank Institution</label>
-                  <input
-                    className="input"
-                    placeholder="e.g. HDFC Bank, ICICI Bank, SBI"
-                    value={form.bank_name}
-                    onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))}
-                  />
-                </div>
-
-                <div className="grid-2">
+        <ModalPortal>
+          <div
+            className="modal-backdrop"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 999999,
+              padding: 16,
+            }}
+            onClick={e => e.target === e.currentTarget && setShowModal(false)}
+          >
+            <div className="modal slide-up" style={{ maxWidth: 480, width: '100%', background: '#ffffff' }}>
+              <div className="modal-header">
+                <div className="modal-title">{editId ? 'Edit Account Details' : 'Add New Bank Account'}</div>
+                <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div className="field">
-                    <label className="field-label">Account Type</label>
-                    <select
-                      className="select"
-                      value={form.account_type}
-                      onChange={e => setForm(f => ({ ...f, account_type: e.target.value as AccountType }))}
-                    >
-                      <option value="savings">Savings Account</option>
-                      <option value="current">Current Account</option>
-                      <option value="credit">Credit Card</option>
-                      <option value="wallet">Wallet / Pre-paid</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label className="field-label">Currency</label>
+                    <label className="field-label">Account Label <span className="field-required">*</span></label>
                     <input
                       className="input"
-                      value="INR (₹)"
-                      disabled
-                      style={{ background: 'var(--bg-subtle)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
+                      placeholder="e.g. HDFC Salary Account"
+                      value={form.name}
+                      onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                     />
                   </div>
-                </div>
 
-                <div className="field">
-                  <label className="field-label">Accent Theme</label>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {ACCOUNT_COLORS.map(c => (
-                      <button
-                        key={c}
-                        onClick={() => setForm(f => ({ ...f, color: c }))}
-                        style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: '50%',
-                          background: c,
-                          border: form.color === c ? '3px solid white' : '3px solid transparent',
-                          outline: form.color === c ? `2px solid ${c}` : 'none',
-                          cursor: 'pointer',
-                          transition: 'all 0.1s ease',
-                        }}
+                  <div className="field">
+                    <label className="field-label">Bank Institution</label>
+                    <input
+                      className="input"
+                      placeholder="e.g. HDFC Bank, ICICI Bank, SBI"
+                      value={form.bank_name}
+                      onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="grid-2">
+                    <div className="field">
+                      <label className="field-label">Account Type</label>
+                      <select
+                        className="select"
+                        value={form.account_type}
+                        onChange={e => setForm(f => ({ ...f, account_type: e.target.value as AccountType }))}
+                      >
+                        <option value="savings">Savings Account</option>
+                        <option value="current">Current Account</option>
+                        <option value="credit">Credit Card</option>
+                        <option value="wallet">Wallet / Pre-paid</option>
+                      </select>
+                    </div>
+
+                    <div className="field">
+                      <label className="field-label">Currency</label>
+                      <input
+                        className="input"
+                        value="INR (₹)"
+                        disabled
+                        style={{ background: 'var(--bg-subtle)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
                       />
-                    ))}
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label">Accent Theme</label>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {ACCOUNT_COLORS.map(c => (
+                        <button
+                          key={c}
+                          onClick={() => setForm(f => ({ ...f, color: c }))}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: '50%',
+                            background: c,
+                            border: form.color === c ? '3px solid white' : '3px solid transparent',
+                            outline: form.color === c ? `2px solid ${c}` : 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.1s ease',
+                          }}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={!form.name || saving}>
-                {saving ? 'Saving…' : editId ? 'Save Changes' : 'Create Account'}
-              </button>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleSave} disabled={!form.name || saving}>
+                  {saving ? 'Saving…' : editId ? 'Save Changes' : 'Create Account'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   )

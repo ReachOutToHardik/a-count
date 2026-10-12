@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useMemo, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { Account, Transaction } from '@/lib/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import TagPill from '@/components/tags/TagPill'
+import TagPickerModal from '@/components/tags/TagPickerModal'
 import {
   Search,
   Download,
@@ -19,6 +21,13 @@ import {
   TrendingDown,
   ArrowUpDown,
   Tag as TagIcon,
+  BarChart3,
+  Landmark,
+  Sparkles,
+  SlidersHorizontal,
+  RefreshCw,
+  Zap,
+  Loader2,
 } from 'lucide-react'
 
 interface Props {
@@ -32,7 +41,18 @@ type SortKey = 'date' | 'amount' | 'description'
 type SortDir = 'asc' | 'desc'
 type DatePreset = 'all' | 'this_month' | 'last_30' | 'last_90'
 
-export default function TransactionsClient({ accounts, transactions, tagMap, allTags }: Props) {
+function TransactionsContent({ accounts, transactions, tagMap, allTags }: Props) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const [txList, setTxList] = useState<Transaction[]>(transactions)
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const [availableTags, setAvailableTags] = useState(allTags)
+  const [currentTagMap, setCurrentTagMap] = useState(tagMap)
+  const [isApplyingRules, setIsApplyingRules] = useState(false)
+  const [ruleMessage, setRuleMessage] = useState<string | null>(null)
+  const [showStandaloneTagModal, setShowStandaloneTagModal] = useState(false)
+
   const [search, setSearch] = useState('')
   const [accountFilter, setAccountFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState<'all' | 'credit' | 'debit' | 'untagged'>('all')
@@ -42,8 +62,42 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page, setPage] = useState(0)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const router = useRouter()
   const PAGE_SIZE = 100
+
+  useEffect(() => {
+    setTxList(transactions)
+  }, [transactions])
+
+  useEffect(() => {
+    setAvailableTags(allTags)
+    setCurrentTagMap(tagMap)
+  }, [allTags, tagMap])
+
+  // Read URL search params on mount / navigation
+  useEffect(() => {
+    if (!searchParams) return
+    const paramAccount = searchParams.get('account')
+    const paramTag = searchParams.get('tag')
+    const paramType = searchParams.get('type')
+    const paramSearch = searchParams.get('search')
+    const paramDatePreset = searchParams.get('datePreset')
+
+    if (paramAccount && (paramAccount === 'all' || accounts.some(a => a.id === paramAccount))) {
+      setAccountFilter(paramAccount)
+    }
+    if (paramTag && (paramTag === 'all' || allTags.some(t => t.name.toLowerCase() === paramTag.toLowerCase()))) {
+      setTagFilter(paramTag)
+    }
+    if (paramType && ['all', 'credit', 'debit', 'untagged'].includes(paramType)) {
+      setTypeFilter(paramType as any)
+    }
+    if (paramSearch !== null && paramSearch !== undefined) {
+      setSearch(paramSearch)
+    }
+    if (paramDatePreset && ['all', 'this_month', 'last_30', 'last_90'].includes(paramDatePreset)) {
+      setDatePreset(paramDatePreset as any)
+    }
+  }, [searchParams, accounts, allTags])
 
   // Date range calculation from preset
   const dateThreshold = useMemo(() => {
@@ -65,7 +119,7 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
   }, [datePreset])
 
   const filtered = useMemo(() => {
-    let list = [...transactions]
+    let list = [...txList]
     if (accountFilter !== 'all') list = list.filter(t => t.account_id === accountFilter)
     if (typeFilter === 'credit') list = list.filter(t => t.type === 'credit')
     if (typeFilter === 'debit') list = list.filter(t => t.type === 'debit')
@@ -79,7 +133,7 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
         (t.upi_vpa ?? '').toLowerCase().includes(q) ||
         (t.upi_name ?? '').toLowerCase().includes(q) ||
         (t.ref_no ?? '').toLowerCase().includes(q) ||
-        t.tags.some(tag => tag.includes(q))
+        t.tags.some(tag => tag.toLowerCase().includes(q))
       )
     }
     list.sort((a, b) => {
@@ -90,7 +144,7 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
       return sortDir === 'asc' ? cmp : -cmp
     })
     return list
-  }, [transactions, accountFilter, typeFilter, tagFilter, dateThreshold, search, sortKey, sortDir])
+  }, [txList, accountFilter, typeFilter, tagFilter, dateThreshold, search, sortKey, sortDir])
 
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -98,6 +152,22 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
   const totalCredit = filtered.reduce((s, t) => t.type === 'credit' ? s + t.amount : s, 0)
   const totalDebit = filtered.reduce((s, t) => t.type === 'debit' ? s + t.amount : s, 0)
   const netFlow = totalCredit - totalDebit
+
+  const activeFiltersCount = (accountFilter !== 'all' ? 1 : 0) +
+    (tagFilter !== 'all' ? 1 : 0) +
+    (typeFilter !== 'all' ? 1 : 0) +
+    (datePreset !== 'all' ? 1 : 0) +
+    (search ? 1 : 0)
+
+  function clearAllFilters() {
+    setAccountFilter('all')
+    setTagFilter('all')
+    setTypeFilter('all')
+    setDatePreset('all')
+    setSearch('')
+    setPage(0)
+    router.push('/transactions')
+  }
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -111,12 +181,13 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
   }
 
   function exportCSV() {
-    const headers = ['Date', 'Description', 'Amount', 'Type', 'UPI VPA', 'UPI Name', 'Reference No', 'Tags']
+    const headers = ['Date', 'Description', 'Amount', 'Type', 'Account', 'UPI VPA', 'UPI Name', 'Reference No', 'Tags']
     const rows = filtered.map(t => [
       t.date,
       `"${t.description.replace(/"/g, '""')}"`,
       t.amount,
       t.type,
+      `"${(t.accounts as any)?.name || t.account_id}"`,
       t.upi_vpa || '',
       t.upi_name || '',
       t.ref_no || '',
@@ -132,21 +203,129 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
     document.body.removeChild(link)
   }
 
+  async function handleSaveTags(newTags: string[]) {
+    if (!editingTx) return
+    const targetId = editingTx.id
+    // Optimistic UI update
+    setTxList(prev => prev.map(t => t.id === targetId ? { ...t, tags: newTags, tag_source: 'manual' } : t))
+    setEditingTx(null)
+
+    try {
+      await fetch('/api/transactions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: targetId, tags: newTags, tag_source: 'manual' }),
+      })
+      router.refresh()
+    } catch (err) {
+      console.error('Failed to update tags', err)
+    }
+  }
+
+  function handleTagCreated(newTag: { name: string; color: string }) {
+    setAvailableTags(prev => {
+      if (prev.some(t => t.name === newTag.name)) return prev
+      return [...prev, { name: newTag.name, color: newTag.color, icon: '' }]
+    })
+    setCurrentTagMap(prev => ({
+      ...prev,
+      [newTag.name]: { name: newTag.name, color: newTag.color, icon: '' },
+    }))
+  }
+
+  async function handleReapplyRules(scope: 'untagged' | 'all') {
+    setIsApplyingRules(true)
+    setRuleMessage(null)
+    try {
+      const res = await fetch('/api/rules/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope, accountId: accountFilter !== 'all' ? accountFilter : undefined }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setRuleMessage(`✓ Rules applied! Updated tags on ${data.updatedCount} of ${data.totalProcessed} transactions.`)
+        setTimeout(() => setRuleMessage(null), 6000)
+        router.refresh()
+      } else {
+        setRuleMessage(`Failed to apply rules: ${data.error || 'Unknown error'}`)
+      }
+    } catch (err: any) {
+      setRuleMessage(`Error applying rules: ${err.message}`)
+    } finally {
+      setIsApplyingRules(false)
+    }
+  }
+
+  const selectedAccountObj = accounts.find(a => a.id === accountFilter)
+
   return (
     <div>
-      {/* Header */}
+      {/* Header with Inter-linking Actions */}
       <div className="page-header">
         <div>
           <h1 className="page-title">Transaction Ledger</h1>
           <p className="page-subtitle">Search, filter, and reconcile all entries across your accounts</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={exportCSV} disabled={filtered.length === 0}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleReapplyRules('untagged')}
+            disabled={isApplyingRules}
+            title="Re-run rules engine across untagged transactions"
+          >
+            {isApplyingRules ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
+            {isApplyingRules ? 'Applying Rules…' : 'Re-apply Rules'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowStandaloneTagModal(true)}
+            title="Create a new custom tag"
+          >
+            <Plus size={14} /> Custom Tag
+          </button>
+          <Link
+            href={`/analytics${accountFilter !== 'all' ? `?account=${accountFilter}` : ''}`}
+            className="btn btn-secondary"
+            title="Analyze spending trends for these transactions"
+          >
+            <BarChart3 size={14} /> View Analytics
+          </Link>
+          <Link href="/tags" className="btn btn-secondary" title="Configure categorization rules">
+            <SlidersHorizontal size={14} /> Rules & Tags
+          </Link>
+          <Link href="/import" className="btn btn-secondary" title="Upload statement file">
+            <Plus size={14} /> Import Statement
+          </Link>
+          <button className="btn btn-primary" onClick={exportCSV} disabled={filtered.length === 0}>
             <Download size={14} />
             Export CSV ({filtered.length.toLocaleString()})
           </button>
         </div>
       </div>
+
+      {ruleMessage && (
+        <div
+          style={{
+            background: 'var(--green-subtle, rgba(22,163,74,0.08))',
+            border: '1px solid rgba(22,163,74,0.25)',
+            borderRadius: 'var(--radius)',
+            padding: '10px 16px',
+            fontSize: 12.5,
+            color: 'var(--green, #16a34a)',
+            fontWeight: 600,
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>{ruleMessage}</span>
+          <button onClick={() => setRuleMessage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Summary Stat Ribbon */}
       <div className="summary-ribbon">
@@ -168,10 +347,85 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
         </div>
         <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
         <div className="summary-item">
-          <span className="summary-item-label">Entries:</span>
+          <span className="summary-item-label">Filtered Entries:</span>
           <span className="summary-item-val">{filtered.length.toLocaleString()}</span>
         </div>
       </div>
+
+      {/* Active Filter Chips Bar */}
+      {activeFiltersCount > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+            marginBottom: 12,
+            padding: '8px 12px',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            fontSize: 12,
+          }}
+        >
+          <span style={{ fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Filter size={12} /> Active Filters ({activeFiltersCount}):
+          </span>
+
+          {search && (
+            <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}>
+              Search: "{search}"
+              <X size={11} style={{ cursor: 'pointer' }} onClick={() => { setSearch(''); setPage(0) }} />
+            </span>
+          )}
+
+          {accountFilter !== 'all' && (
+            <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0fdf4', color: '#15803d', borderColor: '#bbf7d0' }}>
+              Account: {selectedAccountObj?.name || accountFilter}
+              <X size={11} style={{ cursor: 'pointer' }} onClick={() => { setAccountFilter('all'); setPage(0) }} />
+            </span>
+          )}
+
+          {tagFilter !== 'all' && (
+            <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#faf5ff', color: '#7e22ce', borderColor: '#e9d5ff' }}>
+              Tag: {tagFilter}
+              <X size={11} style={{ cursor: 'pointer' }} onClick={() => { setTagFilter('all'); setPage(0) }} />
+            </span>
+          )}
+
+          {typeFilter !== 'all' && (
+            <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f8fafc', color: '#475569', borderColor: '#cbd5e1' }}>
+              Type: {typeFilter}
+              <X size={11} style={{ cursor: 'pointer' }} onClick={() => { setTypeFilter('all'); setPage(0) }} />
+            </span>
+          )}
+
+          {datePreset !== 'all' && (
+            <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#fffbeb', color: '#b45309', borderColor: '#fde68a' }}>
+              Range: {datePreset === 'this_month' ? 'This Month' : datePreset === 'last_30' ? 'Last 30 Days' : 'Last 90 Days'}
+              <X size={11} style={{ cursor: 'pointer' }} onClick={() => { setDatePreset('all'); setPage(0) }} />
+            </span>
+          )}
+
+          <button
+            onClick={clearAllFilters}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--red)',
+              fontSize: 11.5,
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginLeft: 'auto',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <RefreshCw size={11} /> Reset All
+          </button>
+        </div>
+      )}
 
       {/* Filter Toolbar */}
       <div className="filter-toolbar">
@@ -266,55 +520,143 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
             </thead>
             <tbody>
               {paginated.length > 0 ? (
-                paginated.map(tx => (
-                  <tr key={tx.id}>
-                    <td className="td-date">{formatDate(tx.date)}</td>
-                    <td>
-                      <div style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-                        {tx.description}
-                      </div>
-                      {tx.upi_vpa && (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{tx.upi_vpa}</span>
-                          <button
-                            onClick={() => handleCopy(tx.upi_vpa!, tx.id)}
-                            style={{ opacity: 0.5, cursor: 'pointer', padding: 1 }}
-                            title="Copy UPI VPA"
-                          >
-                            {copiedId === tx.id ? <Check size={10} style={{ color: 'var(--green)' }} /> : <Copy size={10} />}
-                          </button>
+                paginated.map(tx => {
+                  const accountObj = (tx.accounts as any) || accounts.find(a => a.id === tx.account_id)
+                  return (
+                    <tr key={tx.id}>
+                      <td className="td-date">{formatDate(tx.date)}</td>
+                      <td>
+                        <div style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                          {tx.description}
                         </div>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div className="account-dot" style={{ background: (tx.accounts as any)?.color || 'var(--accent)' }} />
-                        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>{(tx.accounts as any)?.name || '—'}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="tags-cell">
-                        {tx.tags.length > 0 ? (
-                          tx.tags.map(t => <TagPill key={t} tag={t} color={tagMap[t]?.color} small />)
-                        ) : (
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>untagged</span>
+                        {tx.upi_vpa && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                            <button
+                              onClick={() => { setSearch(tx.upi_vpa!); setPage(0) }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                fontSize: 11,
+                                color: 'var(--text-muted)',
+                                fontFamily: 'var(--font-mono)',
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                                textDecorationStyle: 'dotted',
+                              }}
+                              title="Filter by this UPI VPA"
+                            >
+                              {tx.upi_vpa}
+                            </button>
+                            <button
+                              onClick={() => handleCopy(tx.upi_vpa!, tx.id)}
+                              style={{ opacity: 0.5, cursor: 'pointer', padding: 1, background: 'none', border: 'none' }}
+                              title="Copy UPI VPA"
+                            >
+                              {copiedId === tx.id ? <Check size={10} style={{ color: 'var(--green)' }} /> : <Copy size={10} />}
+                            </button>
+                          </div>
                         )}
-                      </div>
-                    </td>
-                    <td className="td-muted" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-                      {tx.ref_no || '—'}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span className={`td-mono ${tx.type === 'credit' ? 'amount-credit' : 'amount-debit'}`}>
-                        {tx.type === 'credit' ? '+' : '−'}{formatCurrency(tx.amount)}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td>
+                        {accountObj ? (
+                          <Link
+                            href={`/accounts/${accountObj.id || tx.account_id}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              textDecoration: 'none',
+                              color: 'inherit',
+                            }}
+                            title={`View ${accountObj.name} Ledger`}
+                          >
+                            <div className="account-dot" style={{ background: accountObj.color || 'var(--accent)' }} />
+                            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>{accountObj.name}</span>
+                          </Link>
+                        ) : (
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        <div
+                          className="tags-cell"
+                          onClick={() => setEditingTx(tx)}
+                          style={{
+                            display: 'inline-flex',
+                            flexWrap: 'wrap',
+                            gap: 4,
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            padding: '3px 6px',
+                            borderRadius: 'var(--radius-sm, 6px)',
+                            border: '1px solid transparent',
+                            transition: 'all 0.12s ease',
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.borderColor = 'var(--border)'
+                            e.currentTarget.style.background = 'var(--bg-subtle)'
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.borderColor = 'transparent'
+                            e.currentTarget.style.background = 'transparent'
+                          }}
+                          title="Click to select or change tags"
+                        >
+                          {tx.tags.length > 0 ? (
+                            tx.tags.map(t => (
+                              <TagPill key={t} tag={t} color={currentTagMap[t]?.color} small />
+                            ))
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--text-muted)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3,
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                                border: '1px dashed var(--border)',
+                                background: 'var(--bg-subtle)',
+                              }}
+                            >
+                              <Plus size={10} /> Tag
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="td-muted" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                        {tx.ref_no || '—'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className={`td-mono ${tx.type === 'credit' ? 'amount-credit' : 'amount-debit'}`}>
+                          {tx.type === 'credit' ? '+' : '−'}{formatCurrency(tx.amount)}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })
               ) : (
                 <tr>
                   <td colSpan={6} style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-muted)' }}>
-                    No transactions match your current filters.
+                    No transactions match your current filters.{' '}
+                    {activeFiltersCount > 0 && (
+                      <button
+                        onClick={clearAllFilters}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--accent)',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          textDecoration: 'underline',
+                          marginLeft: 6,
+                        }}
+                      >
+                        Reset filters
+                      </button>
+                    )}
                   </td>
                 </tr>
               )}
@@ -348,6 +690,41 @@ export default function TransactionsClient({ accounts, transactions, tagMap, all
           </div>
         </div>
       </div>
+
+      {/* Tag Picker Modal for selecting/changing tags on a transaction */}
+      {editingTx && (
+        <TagPickerModal
+          isOpen={!!editingTx}
+          onClose={() => setEditingTx(null)}
+          currentTags={editingTx.tags}
+          availableTags={availableTags}
+          onSave={handleSaveTags}
+          onTagCreated={handleTagCreated}
+          title="Select or Change Tags"
+          subtitle={`${editingTx.description} · ${formatDate(editingTx.date)} · ${formatCurrency(editingTx.amount)}`}
+        />
+      )}
+
+      {/* Standalone Modal for creating a new custom tag */}
+      {showStandaloneTagModal && (
+        <TagPickerModal
+          isOpen={showStandaloneTagModal}
+          onClose={() => setShowStandaloneTagModal(false)}
+          currentTags={[]}
+          availableTags={availableTags}
+          onSave={() => setShowStandaloneTagModal(false)}
+          onTagCreated={handleTagCreated}
+          title="Create New Custom Tag"
+        />
+      )}
     </div>
+  )
+}
+
+export default function TransactionsClient(props: Props) {
+  return (
+    <Suspense fallback={<div style={{ padding: 24, color: 'var(--text-muted)' }}>Loading transactions ledger…</div>}>
+      <TransactionsContent {...props} />
+    </Suspense>
   )
 }
