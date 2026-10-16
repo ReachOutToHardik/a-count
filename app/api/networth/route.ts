@@ -1,7 +1,9 @@
-import { neon } from '@neondatabase/serverless'
 import { NextResponse } from 'next/server'
+import { getDb } from '@/lib/db'
 
-const sql = neon(process.env.DATABASE_URL!)
+function sql(strings: TemplateStringsArray, ...values: any[]) {
+  return (getDb() as any)(strings, ...values)
+}
 
 let schemaInitialized = false
 
