@@ -7,6 +7,7 @@ export default function SettingsPage() {
   const router = useRouter()
 
   async function handleLogout() {
+    sessionStorage.removeItem('acount_tab_unlocked')
     await fetch('/api/auth', { method: 'DELETE' })
     router.push('/login')
   }

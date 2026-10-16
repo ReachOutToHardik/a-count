@@ -20,13 +20,26 @@ const PUBLIC_PATHS = [
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Check for session cookie
+  const session = request.cookies.get('acount_session')
+  const isAuthenticated = session?.value === 'authenticated'
+
+  // If already authenticated and visiting /login, redirect to /
+  if (isAuthenticated && pathname === '/login') {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
   // Allow public paths and static assets
   const isPublic = PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p))
   if (isPublic) return NextResponse.next()
 
-  // Check for session cookie
-  const session = request.cookies.get('acount_session')
-  if (!session || session.value !== 'authenticated') {
+  // Block unauthenticated API requests with 401
+  if (!isAuthenticated && pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Unauthorized. Passcode required.' }, { status: 401 })
+  }
+
+  // Block unauthenticated page requests and redirect to /login
+  if (!isAuthenticated) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('next', pathname)
     return NextResponse.redirect(loginUrl)

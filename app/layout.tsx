@@ -5,6 +5,7 @@ import BottomNav from '@/components/layout/BottomNav'
 import MobileHeader from '@/components/layout/MobileHeader'
 import QuickActionFab from '@/components/layout/QuickActionFab'
 import PwaManager from '@/components/pwa/PwaManager'
+import AuthShell from '@/components/auth/AuthShell'
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -45,17 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="app-shell">
-          <Sidebar />
-          <div className="main-area">
-            <MobileHeader />
-            <main className="page-content fade-in">
-              {children}
-            </main>
-            <BottomNav />
-            <QuickActionFab />
-          </div>
-        </div>
+        <AuthShell>{children}</AuthShell>
         <PwaManager />
       </body>
     </html>

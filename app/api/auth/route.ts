@@ -15,8 +15,7 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true })
   response.cookies.set('acount_session', 'authenticated', {
     httpOnly: true,
-    sameSite: 'strict',
-    maxAge: 60 * 60 * 24 * 30, // 30 days
+    sameSite: 'lax',
     path: '/',
   })
   return response

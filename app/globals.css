@@ -1827,3 +1827,57 @@ td {
   .nw-hero-split > [style*="width: 1px"] { display: none; }
 }
 
+/* ── Vault & Login Fullscreen Lock Screen ─────────────────────────────────── */
+.login-screen-wrap {
+  min-height: 100vh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 30%, rgba(37, 99, 235, 0.05), transparent 70%), var(--bg-app);
+  padding: 24px 16px;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  overflow-y: auto;
+}
+
+.login-page {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-card {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 36px 32px;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.1), 0 0 1px 1px rgba(0, 0, 0, 0.02);
+}
+
+.vault-lock-screen {
+  min-height: 100vh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-app);
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+}
+
+.vault-lock-spinner {
+  width: 38px;
+  height: 38px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: nw-spin 0.75s linear infinite;
+}
+
+

@@ -2,11 +2,12 @@
 
 import { Suspense, useState, FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
+import { Lock, ArrowRight, Loader2, AlertCircle, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import AppLogo from '@/components/ui/AppLogo'
 
 function LoginForm() {
   const [passphrase, setPassphrase] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -24,6 +25,8 @@ function LoginForm() {
     })
 
     if (res.ok) {
+      // Securely unlock this browser tab session
+      sessionStorage.setItem('acount_tab_unlocked', '1')
       const next = params.get('next') || '/'
       router.push(next)
       router.refresh()
@@ -37,16 +40,20 @@ function LoginForm() {
     <div className="login-card slide-up">
       <div style={{ marginBottom: 26 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-          <div className="brand-badge" style={{ width: 42, height: 42 }}>
-            <AppLogo size={42} />
+          <div className="brand-badge" style={{ width: 44, height: 44 }}>
+            <AppLogo size={44} />
           </div>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--text-primary)' }}>A-Count</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Financial Statement Intelligence</div>
+            <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--text-primary)' }}>A-Count</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Personal Financial Vault · INR</div>
           </div>
         </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--accent-subtle)', color: 'var(--accent)', padding: '3px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, marginBottom: 10 }}>
+          <ShieldCheck size={13} />
+          <span>Encrypted Session Locked</span>
+        </div>
         <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
-          Enter your local passphrase to unlock your financial vault.
+          Enter your vault passphrase to unlock your banking statements, ledgers, and net worth dashboard.
         </p>
       </div>
 
@@ -56,16 +63,36 @@ function LoginForm() {
           <div style={{ position: 'relative' }}>
             <input
               id="passphrase"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               className="input"
               placeholder="Enter passphrase…"
               value={passphrase}
               onChange={e => setPassphrase(e.target.value)}
               autoFocus
               required
-              style={{ paddingLeft: 34 }}
+              style={{ paddingLeft: 34, paddingRight: 36 }}
             />
             <Lock size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: 10,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: 2,
+              }}
+              title={showPassword ? 'Hide passphrase' : 'Show passphrase'}
+            >
+              {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
           </div>
         </div>
 
@@ -91,14 +118,14 @@ function LoginForm() {
           type="submit"
           className="btn btn-primary w-full"
           disabled={loading || !passphrase}
-          style={{ justifyContent: 'center', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{ justifyContent: 'center', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
         >
-          {loading ? <><Loader2 size={13} className="spin" /> Authenticating…</> : <>Unlock Session <ArrowRight size={13} /></>}
+          {loading ? <><Loader2 size={14} className="spin" /> Verifying Passphrase…</> : <>Unlock Financial Vault <ArrowRight size={14} /></>}
         </button>
       </form>
 
       <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 22, textAlign: 'center', lineHeight: 1.5 }}>
-        Configured via <code style={{ background: 'var(--bg-subtle)', padding: '1px 5px', borderRadius: 3, fontFamily: 'var(--font-mono)' }}>APP_PASSPHRASE</code> in <code style={{ background: 'var(--bg-subtle)', padding: '1px 5px', borderRadius: 3, fontFamily: 'var(--font-mono)' }}>.env.local</code>.
+        Session automatically locks when the tab is closed. Configured via <code style={{ background: 'var(--bg-subtle)', padding: '1px 5px', borderRadius: 3, fontFamily: 'var(--font-mono)' }}>APP_PASSPHRASE</code>.
       </p>
     </div>
   )
