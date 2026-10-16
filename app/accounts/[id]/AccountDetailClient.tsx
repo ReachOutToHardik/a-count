@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Account, Transaction } from '@/lib/types'
 import { formatCurrency, formatDate, getMonthLabel } from '@/lib/utils'
 import TagPill from '@/components/tags/TagPill'
+import ExportDropdown from '@/components/ui/ExportDropdown'
 import {
   ArrowLeft,
   Search,
@@ -454,9 +455,27 @@ export default function AccountDetailClient({ account, transactions = [], tagMap
           <Link href={`/analytics?account=${account.id}`} className="btn btn-secondary btn-sm">
             <BarChart3 size={13} /> Account Analytics
           </Link>
-          <Link href={`/import?account=${account.id}`} className="btn btn-primary btn-sm">
+          <Link href={`/import?account=${account.id}`} className="btn btn-secondary btn-sm">
             <UploadCloud size={13} /> Import Statement
           </Link>
+          <ExportDropdown
+            transactions={filtered}
+            metadata={{
+              title: `${account.name} — Account Statement`,
+              subtitle: `${account.bank_name || 'Bank Account'} · ${account.account_type.toUpperCase()}`,
+              accountName: account.name,
+              dateRange: rangeLabel,
+              summary: {
+                totalInflow: credit,
+                totalOutflow: debit,
+                net: balance,
+                count: filtered.length,
+              },
+            }}
+            variant="primary"
+            size="sm"
+            filenamePrefix={`${account.name.toLowerCase().replace(/\s+/g, '_')}_statement`}
+          />
         </div>
       </div>
 

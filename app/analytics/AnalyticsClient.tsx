@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Transaction, Account } from '@/lib/types'
 import { formatCurrency, formatDate, getMonthLabel } from '@/lib/utils'
+import ExportDropdown from '@/components/ui/ExportDropdown'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart, ReferenceLine, Line, AreaChart, Area,
@@ -42,12 +43,14 @@ type DatePreset =
   | 'last_30'
   | 'this_month'
   | 'last_month'
+  | 'this_quarter'
+  | 'last_quarter'
   | 'last_90'
   | 'last_180'
   | 'this_year'
   | 'custom'
 
-type Granularity = 'auto' | 'daily' | 'weekly' | 'monthly'
+type Granularity = 'auto' | 'daily' | 'weekly' | 'monthly' | 'quarterly'
 type TrajectoryView = 'area' | 'bar' | 'net'
 
 function MoneyTooltip({ active, payload, label }: any) {
@@ -117,7 +120,7 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
   }, [searchParams, accounts])
 
   // Current date calculations
-  const { currentMonthKey, lastMonthKey, currentYearKey } = useMemo(() => {
+  const { currentMonthKey, lastMonthKey, currentYearKey, currentQuarterInfo, lastQuarterInfo } = useMemo(() => {
     const now = new Date()
     const y = now.getFullYear()
     const m = now.getMonth() + 1
@@ -126,7 +129,32 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
     const lastMonthDate = new Date(y, m - 2, 1)
     const lm = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`
 
-    return { currentMonthKey: cm, lastMonthKey: lm, currentYearKey: String(y) }
+    const currentQ = Math.ceil(m / 3)
+    const qStartMonth = (currentQ - 1) * 3 + 1
+    const qEndMonth = currentQ * 3
+    const qEndDay = new Date(y, qEndMonth, 0).getDate()
+    const thisQStart = `${y}-${String(qStartMonth).padStart(2, '0')}-01`
+    const thisQEnd = `${y}-${String(qEndMonth).padStart(2, '0')}-${String(qEndDay).padStart(2, '0')}`
+
+    let lastQ = currentQ - 1
+    let lastQYear = y
+    if (lastQ < 1) {
+      lastQ = 4
+      lastQYear = y - 1
+    }
+    const lastQStartMonth = (lastQ - 1) * 3 + 1
+    const lastQEndMonth = lastQ * 3
+    const lastQEndDay = new Date(lastQYear, lastQEndMonth, 0).getDate()
+    const lastQStart = `${lastQYear}-${String(lastQStartMonth).padStart(2, '0')}-01`
+    const lastQEnd = `${lastQYear}-${String(lastQEndMonth).padStart(2, '0')}-${String(lastQEndDay).padStart(2, '0')}`
+
+    return {
+      currentMonthKey: cm,
+      lastMonthKey: lm,
+      currentYearKey: String(y),
+      currentQuarterInfo: { q: currentQ, year: y, start: thisQStart, end: thisQEnd, label: `Q${currentQ} ${y}` },
+      lastQuarterInfo: { q: lastQ, year: lastQYear, start: lastQStart, end: lastQEnd, label: `Q${lastQ} ${lastQYear}` },
+    }
   }, [])
 
   // Calculate Date Range Boundaries from Active Preset
@@ -157,6 +185,20 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
       const end = `${lastMonthKey}-${String(lastDay).padStart(2, '0')}`
       return { startDate: start, endDate: end, rangeLabel: `Last Month (${getMonthLabel(lastMonthKey)})` }
     }
+    if (datePreset === 'this_quarter') {
+      return {
+        startDate: currentQuarterInfo.start,
+        endDate: todayStr < currentQuarterInfo.end ? todayStr : currentQuarterInfo.end,
+        rangeLabel: `This Quarter (${currentQuarterInfo.label})`,
+      }
+    }
+    if (datePreset === 'last_quarter') {
+      return {
+        startDate: lastQuarterInfo.start,
+        endDate: lastQuarterInfo.end,
+        rangeLabel: `Last Quarter (${lastQuarterInfo.label})`,
+      }
+    }
     if (datePreset === 'last_90') {
       const d = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
       return { startDate: d.toISOString().split('T')[0], endDate: todayStr, rangeLabel: 'Last 90 Days' }
@@ -177,7 +219,7 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
       }
     }
     return { startDate: null, endDate: null, rangeLabel: 'All Time' }
-  }, [datePreset, currentMonthKey, lastMonthKey, currentYearKey, customStart, customEnd])
+  }, [datePreset, currentMonthKey, lastMonthKey, currentYearKey, currentQuarterInfo, lastQuarterInfo, customStart, customEnd])
 
   // Filtered transactions
   const filtered = useMemo(() => {
@@ -317,6 +359,46 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
       return result
     }
 
+    if (effectiveGranularity === 'quarterly') {
+      const quarterlyMap: Record<string, { Income: number; Expense: number; txCount: number; year: number; q: number }> = {}
+
+      for (const tx of filtered) {
+        if (!tx.date) continue
+        const year = parseInt(tx.date.substring(0, 4), 10)
+        const month = parseInt(tx.date.substring(5, 7), 10)
+        if (isNaN(year) || isNaN(month)) continue
+        const q = Math.ceil(month / 3)
+        const key = `${year}-Q${q}`
+
+        if (!quarterlyMap[key]) {
+          quarterlyMap[key] = { Income: 0, Expense: 0, txCount: 0, year, q }
+        }
+        if (tx.type === 'credit') quarterlyMap[key].Income += tx.amount
+        else quarterlyMap[key].Expense += tx.amount
+        quarterlyMap[key].txCount++
+      }
+
+      const quarterNames: Record<number, string> = {
+        1: 'Jan – Mar',
+        2: 'Apr – Jun',
+        3: 'Jul – Sep',
+        4: 'Oct – Dec',
+      }
+
+      return Object.keys(quarterlyMap).sort().map(k => {
+        const item = quarterlyMap[k]
+        return {
+          key: k,
+          label: `Q${item.q} '${String(item.year).slice(-2)}`,
+          fullDate: `Q${item.q} ${item.year} (${quarterNames[item.q] || ''})`,
+          Income: Math.round(item.Income),
+          Expense: Math.round(item.Expense),
+          Net: Math.round(item.Income - item.Expense),
+          txCount: item.txCount,
+        }
+      })
+    }
+
     // Monthly aggregation
     const monthlyMap: Record<string, { Income: number; Expense: number; txCount: number }> = {}
     for (const tx of filtered) {
@@ -366,6 +448,11 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
         bucketKey = tx.date
       } else if (effectiveGranularity === 'weekly') {
         bucketKey = tx.date.substring(0, 7) // fallback to month
+      } else if (effectiveGranularity === 'quarterly') {
+        const year = parseInt(tx.date.substring(0, 4), 10)
+        const month = parseInt(tx.date.substring(5, 7), 10)
+        const q = Math.ceil(month / 3)
+        bucketKey = `${year}-Q${q}`
       } else {
         bucketKey = tx.date.substring(0, 7)
       }
@@ -383,6 +470,96 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
       ...byBucket[d.key],
     }))
   }, [filtered, netFlowData, topTags, effectiveGranularity])
+
+  // Comprehensive Quarterly Financial Analysis & Health Intelligence
+  const quarterlyAnalysis = useMemo(() => {
+    if (filtered.length === 0) {
+      return { quarters: [], bestQuarter: null, avgQuarterlyBurn: 0, totalInflow: 0, totalOutflow: 0 }
+    }
+
+    const qMap: Record<string, {
+      key: string
+      year: number
+      quarter: number
+      label: string
+      periodLabel: string
+      inflow: number
+      outflow: number
+      net: number
+      txCount: number
+      savingsRate: number
+      qoqInflowChange: number | null
+      qoqOutflowChange: number | null
+    }> = {}
+
+    const quarterMonths: Record<number, string> = {
+      1: 'Jan 1 – Mar 31',
+      2: 'Apr 1 – Jun 30',
+      3: 'Jul 1 – Sep 30',
+      4: 'Oct 1 – Dec 31',
+    }
+
+    for (const tx of filtered) {
+      if (!tx.date) continue
+      const year = parseInt(tx.date.substring(0, 4), 10)
+      const month = parseInt(tx.date.substring(5, 7), 10)
+      if (isNaN(year) || isNaN(month)) continue
+      const q = Math.ceil(month / 3)
+      const key = `${year}-Q${q}`
+
+      if (!qMap[key]) {
+        qMap[key] = {
+          key,
+          year,
+          quarter: q,
+          label: `Q${q} ${year}`,
+          periodLabel: quarterMonths[q] || '',
+          inflow: 0,
+          outflow: 0,
+          net: 0,
+          txCount: 0,
+          savingsRate: 0,
+          qoqInflowChange: null,
+          qoqOutflowChange: null,
+        }
+      }
+
+      if (tx.type === 'credit') qMap[key].inflow += tx.amount
+      else qMap[key].outflow += tx.amount
+      qMap[key].txCount++
+    }
+
+    const sortedKeys = Object.keys(qMap).sort()
+    const quarters = sortedKeys.map((k, idx) => {
+      const item = qMap[k]
+      item.net = item.inflow - item.outflow
+      item.savingsRate = item.inflow > 0 ? (item.net / item.inflow) * 100 : (item.outflow > 0 ? -100 : 0)
+
+      if (idx > 0) {
+        const prev = qMap[sortedKeys[idx - 1]]
+        if (prev.inflow > 0) {
+          item.qoqInflowChange = ((item.inflow - prev.inflow) / prev.inflow) * 100
+        }
+        if (prev.outflow > 0) {
+          item.qoqOutflowChange = ((item.outflow - prev.outflow) / prev.outflow) * 100
+        }
+      }
+      return item
+    })
+
+    const totalInflow = quarters.reduce((s, q) => s + q.inflow, 0)
+    const totalOutflow = quarters.reduce((s, q) => s + q.outflow, 0)
+    const avgQuarterlyBurn = quarters.length > 0 ? Math.round(totalOutflow / quarters.length) : 0
+    const bestQuarter = quarters.length > 0 ? [...quarters].sort((a, b) => b.net - a.net)[0] : null
+
+    return {
+      quarters,
+      bestQuarter,
+      avgQuarterlyBurn,
+      totalInflow,
+      totalOutflow,
+    }
+  }, [filtered])
 
   // Top merchants
   const topMerchants = useMemo(() => {
@@ -450,6 +627,23 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
             <option value="all">All Accounts ({accounts.length})</option>
             {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
+          <ExportDropdown
+            transactions={filtered}
+            metadata={{
+              title: 'Financial Analytics & Spending Intelligence',
+              subtitle: 'Cash flow dynamics, merchant distribution, and spending trajectories',
+              accountName: selectedAccount !== 'all' ? accounts.find(a => a.id === selectedAccount)?.name : 'All Consolidated Accounts',
+              dateRange: rangeLabel,
+              summary: {
+                totalInflow: totalCredit,
+                totalOutflow: totalDebit,
+                net: netSurplus,
+                count: filtered.length,
+              },
+            }}
+            variant="primary"
+            filenamePrefix="analytics_statement"
+          />
         </div>
       </div>
 
@@ -468,6 +662,8 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
                 { id: 'last_30', label: '30 Days' },
                 { id: 'this_month', label: 'This Month' },
                 { id: 'last_month', label: 'Last Month' },
+                { id: 'this_quarter', label: 'This Quarter' },
+                { id: 'last_quarter', label: 'Last Quarter' },
                 { id: 'last_90', label: '90 Days' },
                 { id: 'last_180', label: '6 Months' },
                 { id: 'this_year', label: `${currentYearKey}` },
@@ -491,11 +687,12 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
               className="select"
               value={granularity}
               onChange={e => setGranularity(e.target.value as Granularity)}
-              style={{ width: 110, fontSize: 12, height: 32 }}
+              style={{ width: 115, fontSize: 12, height: 32 }}
             >
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
               <option value="auto">Auto ({effectiveGranularity})</option>
             </select>
 
@@ -739,6 +936,198 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
         )}
       </div>
 
+      {/* ── Quarterly Performance & Health Analysis ──────────────────────── */}
+      {quarterlyAnalysis.quarters.length > 0 && (
+        <div className="card mb-6" style={{ padding: '20px 22px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 6, background: 'rgba(37, 99, 235, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+                  <Calendar size={15} />
+                </div>
+                <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, letterSpacing: '-0.01em' }}>Quarterly Performance & Financial Health (QoQ)</h2>
+              </div>
+              <p style={{ fontSize: 11.5, color: 'var(--text-muted)', margin: '4px 0 0 36px' }}>
+                Multi-quarter revenue retention, expense burn trajectories, and quarter-over-quarter velocity
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="badge badge-neutral" style={{ fontSize: 11, fontWeight: 600 }}>
+                {quarterlyAnalysis.quarters.length} Quarters Analyzed
+              </span>
+            </div>
+          </div>
+
+          {/* Mini Quarterly KPI Strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
+            <div style={{ padding: '12px 14px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Avg Quarterly Burn</div>
+              <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--red)', marginTop: 4 }}>
+                −{formatCurrency(quarterlyAnalysis.avgQuarterlyBurn, 'INR')}
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>Average operational outflow per quarter</div>
+            </div>
+
+            <div style={{ padding: '12px 14px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Best Net Quarter</div>
+              <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-mono)', color: quarterlyAnalysis.bestQuarter && quarterlyAnalysis.bestQuarter.net >= 0 ? 'var(--green)' : 'var(--text-primary)', marginTop: 4 }}>
+                {quarterlyAnalysis.bestQuarter ? (
+                  <>
+                    {quarterlyAnalysis.bestQuarter.label} ({quarterlyAnalysis.bestQuarter.net >= 0 ? '+' : ''}{formatCurrency(quarterlyAnalysis.bestQuarter.net, 'INR')})
+                  </>
+                ) : 'N/A'}
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>Peak net cash surplus generation</div>
+            </div>
+
+            <div style={{ padding: '12px 14px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Inflows Analyzed</div>
+              <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--green)', marginTop: 4 }}>
+                +{formatCurrency(quarterlyAnalysis.totalInflow, 'INR')}
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>Across all active quarters</div>
+            </div>
+
+            <div style={{ padding: '12px 14px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Net Cash Generation</div>
+              <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-mono)', color: (quarterlyAnalysis.totalInflow - quarterlyAnalysis.totalOutflow) >= 0 ? 'var(--green)' : 'var(--red)', marginTop: 4 }}>
+                {(quarterlyAnalysis.totalInflow - quarterlyAnalysis.totalOutflow) >= 0 ? '+' : ''}{formatCurrency(quarterlyAnalysis.totalInflow - quarterlyAnalysis.totalOutflow, 'INR')}
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>Cumulative quarterly surplus</div>
+            </div>
+          </div>
+
+          {/* Quarterly Comparison Chart */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Quarterly Inflow vs Outflow Comparison
+            </div>
+            <ResponsiveContainer width="100%" height={210}>
+              <BarChart data={quarterlyAnalysis.quarters} barGap={4} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-subtle)" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  formatter={(value: any, name: any) => [
+                    formatCurrency(value as number, 'INR'),
+                    name === 'inflow' ? 'Total Inflow (+)' : name === 'outflow' ? 'Total Outflow (−)' : 'Net Flow'
+                  ]}
+                  labelFormatter={(label: any) => `Quarter: ${label}`}
+                />
+                <Bar dataKey="inflow" fill="#10b981" radius={[3, 3, 0, 0]} name="inflow" />
+                <Bar dataKey="outflow" fill="#ef4444" radius={[3, 3, 0, 0]} name="outflow" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Corporate Quarterly Breakdown Table */}
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th style={{ width: 140 }}>Quarter</th>
+                  <th>Period</th>
+                  <th style={{ textAlign: 'right' }}>Inflow (+)</th>
+                  <th style={{ textAlign: 'right' }}>Outflow (−)</th>
+                  <th style={{ textAlign: 'right' }}>Net Surplus / Deficit</th>
+                  <th style={{ textAlign: 'center' }}>Savings Margin</th>
+                  <th style={{ textAlign: 'center' }}>QoQ Outflow Trend</th>
+                  <th style={{ textAlign: 'right' }}>Volume</th>
+                  <th style={{ textAlign: 'center' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {quarterlyAnalysis.quarters.map(q => {
+                  const inflowShare = quarterlyAnalysis.totalInflow > 0 ? ((q.inflow / quarterlyAnalysis.totalInflow) * 100).toFixed(1) : '0'
+                  const outflowShare = quarterlyAnalysis.totalOutflow > 0 ? ((q.outflow / quarterlyAnalysis.totalOutflow) * 100).toFixed(1) : '0'
+                  return (
+                    <tr key={q.key} className="hover-subtle">
+                      <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {q.label}
+                      </td>
+                      <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {q.periodLabel}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--green)' }}>
+                        <div>+{formatCurrency(q.inflow, 'INR')}</div>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>{inflowShare}% of total</div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--red)' }}>
+                        <div>−{formatCurrency(q.outflow, 'INR')}</div>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>{outflowShare}% of total</div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: q.net >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        {q.net >= 0 ? '+' : ''}{formatCurrency(q.net, 'INR')}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 12,
+                            background: q.savingsRate >= 0 ? 'var(--green-subtle)' : 'var(--red-subtle)',
+                            color: q.savingsRate >= 0 ? 'var(--green)' : 'var(--red)',
+                          }}
+                        >
+                          {q.savingsRate >= 0 ? '+' : ''}{q.savingsRate.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        {q.qoqOutflowChange !== null ? (
+                          <span
+                            style={{
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 2,
+                              color: q.qoqOutflowChange <= 0 ? 'var(--green)' : 'var(--red)',
+                            }}
+                          >
+                            {q.qoqOutflowChange <= 0 ? '↓ ' : '↑ '}
+                            {Math.abs(q.qoqOutflowChange).toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>— (Base)</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        {q.txCount} txs
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 10.5, padding: '2px 8px', height: 24, color: 'var(--accent)', fontWeight: 600 }}
+                          onClick={() => {
+                            const year = q.year
+                            const qNum = q.quarter
+                            const sMonth = (qNum - 1) * 3 + 1
+                            const eMonth = qNum * 3
+                            const lastDay = new Date(year, eMonth, 0).getDate()
+                            const startStr = `${year}-${String(sMonth).padStart(2, '0')}-01`
+                            const endStr = `${year}-${String(eMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+                            setDatePreset('custom')
+                            setCustomStart(startStr)
+                            setCustomEnd(endStr)
+                            window.scrollTo({ top: 0, behavior: 'smooth' })
+                          }}
+                          title={`Filter analytics to ${q.label}`}
+                        >
+                          Filter {q.label} →
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Stacked Category Chart & Top Merchants */}
       <div className="grid-2 mb-6">
         <div className="chart-wrap">
@@ -828,7 +1217,7 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
                           {m.name}
                         </span>
                         <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--red)', flexShrink: 0 }}>
-                          {formatCurrency(m.amount, 'INR')}
+                          {formatCurrency(m.amount, 'INR')} <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>({totalDebit > 0 ? ((m.amount / totalDebit) * 100).toFixed(1) : 0}%)</span>
                         </span>
                       </div>
                       <div style={{ height: 4, background: 'var(--bg-subtle)', borderRadius: 2 }}>
@@ -875,63 +1264,157 @@ function AnalyticsContent({ transactions, accounts, tagMap }: Props) {
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-              Top Debits (−)
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 6px' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Top Debits (−)
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                Total: {formatCurrency(totalDebit, 'INR')}
+              </span>
             </div>
-            {largestDebits.map(tx => (
-              <Link
-                key={tx.id}
-                href={`/transactions?search=${encodeURIComponent(tx.description.slice(0, 20))}`}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '6px 4px',
-                  borderBottom: '1px solid var(--border-subtle)',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                  borderRadius: 4,
-                }}
-                className="hover-subtle"
-                title="View in Transactions"
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.description}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{formatDate(tx.date)}</div>
-                </div>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--red)', marginLeft: 12, flexShrink: 0 }}>
-                  −{formatCurrency(tx.amount, 'INR')}
-                </span>
-              </Link>
-            ))}
+            {largestDebits.map(tx => {
+              const pct = totalDebit > 0 ? ((tx.amount / totalDebit) * 100).toFixed(1) : '0'
+              const pctNum = parseFloat(pct)
+              const acc = accounts.find(a => a.id === tx.account_id)
+              return (
+                <Link
+                  key={tx.id}
+                  href={`/transactions?search=${encodeURIComponent(tx.description.slice(0, 20))}`}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    padding: '8px 6px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    borderRadius: 4,
+                    gap: 5,
+                  }}
+                  className="hover-subtle"
+                  title={`View in Transactions — represents ${pct}% of total debits`}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {tx.description}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                        <span>{formatDate(tx.date)}</span>
+                        {acc && <span>· {acc.name}</span>}
+                        {tx.tags?.[0] && <span style={{ textTransform: 'capitalize' }}>· {tx.tags[0]}</span>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--red)' }}>
+                        −{formatCurrency(tx.amount, 'INR')}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: 'var(--red)',
+                          background: 'var(--red-subtle)',
+                          padding: '1px 6px',
+                          borderRadius: 4,
+                          display: 'inline-block',
+                          marginTop: 2,
+                        }}
+                      >
+                        {pct}% of total debits
+                      </div>
+                    </div>
+                  </div>
+                  {/* Share Progress Bar */}
+                  <div style={{ height: 3, background: 'var(--bg-subtle)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${Math.min(100, Math.max(3, pctNum))}%`,
+                        background: 'var(--red)',
+                        borderRadius: 2,
+                        transition: 'width 0.3s ease',
+                      }}
+                    />
+                  </div>
+                </Link>
+              )
+            })}
 
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '12px 0 6px' }}>
-              Top Credits (+)
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '14px 0 6px' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Top Credits (+)
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                Total: {formatCurrency(totalCredit, 'INR')}
+              </span>
             </div>
-            {largestCredits.map(tx => (
-              <Link
-                key={tx.id}
-                href={`/transactions?search=${encodeURIComponent(tx.description.slice(0, 20))}`}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '6px 4px',
-                  borderBottom: '1px solid var(--border-subtle)',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                  borderRadius: 4,
-                }}
-                className="hover-subtle"
-                title="View in Transactions"
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.description}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{formatDate(tx.date)}</div>
-                </div>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--green)', marginLeft: 12, flexShrink: 0 }}>
-                  +{formatCurrency(tx.amount, 'INR')}
-                </span>
-              </Link>
-            ))}
+            {largestCredits.map(tx => {
+              const pct = totalCredit > 0 ? ((tx.amount / totalCredit) * 100).toFixed(1) : '0'
+              const pctNum = parseFloat(pct)
+              const acc = accounts.find(a => a.id === tx.account_id)
+              return (
+                <Link
+                  key={tx.id}
+                  href={`/transactions?search=${encodeURIComponent(tx.description.slice(0, 20))}`}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    padding: '8px 6px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    borderRadius: 4,
+                    gap: 5,
+                  }}
+                  className="hover-subtle"
+                  title={`View in Transactions — represents ${pct}% of total credits`}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {tx.description}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                        <span>{formatDate(tx.date)}</span>
+                        {acc && <span>· {acc.name}</span>}
+                        {tx.tags?.[0] && <span style={{ textTransform: 'capitalize' }}>· {tx.tags[0]}</span>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--green)' }}>
+                        +{formatCurrency(tx.amount, 'INR')}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: 'var(--green)',
+                          background: 'var(--green-subtle)',
+                          padding: '1px 6px',
+                          borderRadius: 4,
+                          display: 'inline-block',
+                          marginTop: 2,
+                        }}
+                      >
+                        {pct}% of total credits
+                      </div>
+                    </div>
+                  </div>
+                  {/* Share Progress Bar */}
+                  <div style={{ height: 3, background: 'var(--bg-subtle)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${Math.min(100, Math.max(3, pctNum))}%`,
+                        background: 'var(--green)',
+                        borderRadius: 2,
+                        transition: 'width 0.3s ease',
+                      }}
+                    />
+                  </div>
+                </Link>
+              )
+            })}
           </div>
         </div>
       </div>

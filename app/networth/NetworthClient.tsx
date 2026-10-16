@@ -18,8 +18,10 @@ import {
   Maximize2, Minimize2, Layers, TableProperties,
   ArrowLeft, CheckCircle, ChevronDown, Compass,
   SlidersHorizontal, Eye, EyeOff, Search, Grid, LayoutDashboard,
-  Plane, Home, GraduationCap, Award, Activity
+  Plane, Home, GraduationCap, Award, Activity,
+  Download, FileText, FileSpreadsheet, FileCode
 } from 'lucide-react'
+import { exportNetWorthPdf, exportNetWorthExcel, exportNetWorthCsv } from '@/lib/export'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -228,6 +230,7 @@ export default function NetWorthClient() {
   const [showSimulatorModal, setShowSimulatorModal] = useState<Loan | null>(null)
   const [showAmortizationModal, setShowAmortizationModal] = useState<Loan | null>(null)
   const [showUpdateBalanceModal, setShowUpdateBalanceModal] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
@@ -810,6 +813,175 @@ export default function NetWorthClient() {
             <RefreshCw size={13} />
             <span>Save Snapshot</span>
           </button>
+
+          {/* Export Balance Sheet Menu */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="btn btn-secondary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, height: 34, padding: '0 12px', cursor: 'pointer' }}
+              title="Export audited Balance Sheet as PDF, Excel, or CSV"
+            >
+              <Download size={13} />
+              <span>Export Balance Sheet</span>
+              <ChevronDown size={11} style={{ opacity: 0.7, transform: showExportMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            </button>
+
+            {showExportMenu && (
+              <>
+                <div
+                  onClick={() => setShowExportMenu(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 'calc(100% + 6px)',
+                    zIndex: 50,
+                    width: 250,
+                    background: '#ffffff',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    boxShadow: 'var(--shadow-lg)',
+                    padding: '6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 3,
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setShowExportMenu(false)
+                      const data = {
+                        totalAssets,
+                        totalLiabilities,
+                        netWorth,
+                        liquidAssets: totalLiquidCash,
+                        assetsBreakdown: [
+                          { category: 'Liquid Bank', name: 'Primary Banking Balances', amount: bankBalance },
+                          ...fds.map(f => ({ category: 'Fixed Deposits', name: `${f.bank_name} (${f.rate}% p.a.)`, amount: calcFDValue(f), notes: f.notes })),
+                          ...investments.map(i => ({ category: i.type.toUpperCase().replace(/_/g, ' '), name: i.name || 'Investment', amount: Number(i.current_value || 0), notes: i.notes })),
+                          ...moneyLent.map(m => ({ category: 'Receivables / Lent', name: `${m.borrower_name}`, amount: Math.max(0, Number(m.amount_lent) - Number(m.amount_recovered || 0)), notes: m.notes })),
+                          ...physicalAssets.map(p => ({ category: 'Physical Asset', name: p.name || 'Asset', amount: Number(p.current_value || 0), notes: p.notes })),
+                        ].filter(a => a.amount > 0),
+                        liabilitiesBreakdown: [
+                          ...loans.map(l => ({ category: 'Loan / Debt', name: `${l.lender_name || 'Lender'} (${l.loan_type})`, amount: calcLoanOutstanding(l), notes: l.notes })),
+                          ...creditCards.map(c => ({ category: 'Credit Card Due', name: `${c.bank_name || 'Card'} (${c.card_name || 'Card'})`, amount: Number(c.current_balance || 0) })),
+                        ].filter(l => l.amount > 0),
+                      }
+                      exportNetWorthPdf(data)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 10px',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle, #f8fafc)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <FileText size={15} style={{ color: 'var(--accent)' }} />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Corporate PDF Statement</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Printable Balance Sheet letterhead</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowExportMenu(false)
+                      const data = {
+                        totalAssets,
+                        totalLiabilities,
+                        netWorth,
+                        liquidAssets: totalLiquidCash,
+                        assetsBreakdown: [
+                          { category: 'Liquid Bank', name: 'Primary Banking Balances', amount: bankBalance },
+                          ...fds.map(f => ({ category: 'Fixed Deposits', name: `${f.bank_name} (${f.rate}% p.a.)`, amount: calcFDValue(f), notes: f.notes })),
+                          ...investments.map(i => ({ category: i.type.toUpperCase().replace(/_/g, ' '), name: i.name || 'Investment', amount: Number(i.current_value || 0), notes: i.notes })),
+                          ...moneyLent.map(m => ({ category: 'Receivables / Lent', name: `${m.borrower_name}`, amount: Math.max(0, Number(m.amount_lent) - Number(m.amount_recovered || 0)), notes: m.notes })),
+                          ...physicalAssets.map(p => ({ category: 'Physical Asset', name: p.name || 'Asset', amount: Number(p.current_value || 0), notes: p.notes })),
+                        ].filter(a => a.amount > 0),
+                        liabilitiesBreakdown: [
+                          ...loans.map(l => ({ category: 'Loan / Debt', name: `${l.lender_name || 'Lender'} (${l.loan_type})`, amount: calcLoanOutstanding(l), notes: l.notes })),
+                          ...creditCards.map(c => ({ category: 'Credit Card Due', name: `${c.bank_name || 'Card'} (${c.card_name || 'Card'})`, amount: Number(c.current_balance || 0) })),
+                        ].filter(l => l.amount > 0),
+                      }
+                      exportNetWorthExcel(data)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 10px',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle, #f8fafc)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <FileSpreadsheet size={15} style={{ color: 'var(--green)' }} />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Excel Workbook (.xlsx)</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Multi-sheet audited schedules</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowExportMenu(false)
+                      const data = {
+                        totalAssets,
+                        totalLiabilities,
+                        netWorth,
+                        liquidAssets: totalLiquidCash,
+                        assetsBreakdown: [
+                          { category: 'Liquid Bank', name: 'Primary Banking Balances', amount: bankBalance },
+                          ...fds.map(f => ({ category: 'Fixed Deposits', name: `${f.bank_name} (${f.rate}% p.a.)`, amount: calcFDValue(f), notes: f.notes })),
+                          ...investments.map(i => ({ category: i.type.toUpperCase().replace(/_/g, ' '), name: i.name || 'Investment', amount: Number(i.current_value || 0), notes: i.notes })),
+                          ...moneyLent.map(m => ({ category: 'Receivables / Lent', name: `${m.borrower_name}`, amount: Math.max(0, Number(m.amount_lent) - Number(m.amount_recovered || 0)), notes: m.notes })),
+                          ...physicalAssets.map(p => ({ category: 'Physical Asset', name: p.name || 'Asset', amount: Number(p.current_value || 0), notes: p.notes })),
+                        ].filter(a => a.amount > 0),
+                        liabilitiesBreakdown: [
+                          ...loans.map(l => ({ category: 'Loan / Debt', name: `${l.lender_name || 'Lender'} (${l.loan_type})`, amount: calcLoanOutstanding(l), notes: l.notes })),
+                          ...creditCards.map(c => ({ category: 'Credit Card Due', name: `${c.bank_name || 'Card'} (${c.card_name || 'Card'})`, amount: Number(c.current_balance || 0) })),
+                        ].filter(l => l.amount > 0),
+                      }
+                      exportNetWorthCsv(data)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 10px',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle, #f8fafc)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <FileCode size={15} style={{ color: 'var(--slate)' }} />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Raw CSV (.csv)</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>RFC-4180 balance sheet lines</div>
+                    </div>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* + Add Entry Menu */}
           <div style={{ position: 'relative' }}>

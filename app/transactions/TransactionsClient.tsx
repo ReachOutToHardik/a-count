@@ -7,6 +7,7 @@ import { Account, Transaction } from '@/lib/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import TagPill from '@/components/tags/TagPill'
 import TagPickerModal from '@/components/tags/TagPickerModal'
+import ExportDropdown from '@/components/ui/ExportDropdown'
 import {
   Search,
   Download,
@@ -259,6 +260,28 @@ function TransactionsContent({ accounts, transactions, tagMap, allTags }: Props)
 
   const selectedAccountObj = accounts.find(a => a.id === accountFilter)
 
+  const exportMeta = useMemo(() => {
+    let inflow = 0
+    let outflow = 0
+    for (const t of filtered) {
+      if (t.type === 'credit') inflow += Number(t.amount) || 0
+      else outflow += Number(t.amount) || 0
+    }
+    const acctName = selectedAccountObj ? selectedAccountObj.name : 'All Consolidated Accounts'
+    return {
+      title: 'Financial Transaction Ledger',
+      subtitle: 'Reconciled banking transaction journal',
+      accountName: acctName,
+      dateRange: datePreset === 'all' ? 'All Time Recorded' : datePreset.replace(/_/g, ' ').toUpperCase(),
+      summary: {
+        totalInflow: inflow,
+        totalOutflow: outflow,
+        net: inflow - outflow,
+        count: filtered.length,
+      },
+    }
+  }, [filtered, selectedAccountObj, datePreset])
+
   return (
     <div>
       {/* Header with Inter-linking Actions */}
@@ -297,10 +320,12 @@ function TransactionsContent({ accounts, transactions, tagMap, allTags }: Props)
           <Link href="/import" className="btn btn-secondary" title="Upload statement file">
             <Plus size={14} /> Import Statement
           </Link>
-          <button className="btn btn-primary" onClick={exportCSV} disabled={filtered.length === 0}>
-            <Download size={14} />
-            Export CSV ({filtered.length.toLocaleString()})
-          </button>
+          <ExportDropdown
+            transactions={filtered}
+            metadata={exportMeta}
+            variant="primary"
+            filenamePrefix="ledger_statement"
+          />
         </div>
       </div>
 

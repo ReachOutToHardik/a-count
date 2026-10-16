@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Transaction, Account } from '@/lib/types'
 import { formatCurrency, formatDate, getMonthLabel, computeCategoryStats } from '@/lib/utils'
 import TagPill from '@/components/tags/TagPill'
+import ExportDropdown from '@/components/ui/ExportDropdown'
 import {
   TrendingUp,
   TrendingDown,
@@ -50,7 +51,7 @@ type DatePreset =
   | 'month_select'
   | 'custom'
 
-type Granularity = 'auto' | 'daily' | 'weekly' | 'monthly'
+type Granularity = 'auto' | 'daily' | 'weekly' | 'monthly' | 'quarterly'
 type ChartViewType = 'bar' | 'area' | 'net'
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -431,6 +432,46 @@ export default function DashboardClient({
       return result
     }
 
+    if (effectiveGranularity === 'quarterly') {
+      const quarterlyMap: Record<string, { Income: number; Expense: number; txCount: number; year: number; q: number }> = {}
+
+      for (const tx of filteredTransactions) {
+        if (!tx.date) continue
+        const year = parseInt(tx.date.substring(0, 4), 10)
+        const month = parseInt(tx.date.substring(5, 7), 10)
+        if (isNaN(year) || isNaN(month)) continue
+        const q = Math.ceil(month / 3)
+        const key = `${year}-Q${q}`
+
+        if (!quarterlyMap[key]) {
+          quarterlyMap[key] = { Income: 0, Expense: 0, txCount: 0, year, q }
+        }
+        if (tx.type === 'credit') quarterlyMap[key].Income += tx.amount
+        else quarterlyMap[key].Expense += tx.amount
+        quarterlyMap[key].txCount++
+      }
+
+      const quarterNames: Record<number, string> = {
+        1: 'Jan – Mar',
+        2: 'Apr – Jun',
+        3: 'Jul – Sep',
+        4: 'Oct – Dec',
+      }
+
+      return Object.keys(quarterlyMap).sort().map(k => {
+        const item = quarterlyMap[k]
+        return {
+          key: k,
+          label: `Q${item.q} '${String(item.year).slice(-2)}`,
+          fullDate: `Q${item.q} ${item.year} (${quarterNames[item.q] || ''})`,
+          Income: Math.round(item.Income),
+          Expense: Math.round(item.Expense),
+          Net: Math.round(item.Income - item.Expense),
+          txCount: item.txCount,
+        }
+      })
+    }
+
     // Monthly Aggregation
     const monthlyMap: Record<string, { Income: number; Expense: number; txCount: number }> = {}
 
@@ -517,7 +558,7 @@ export default function DashboardClient({
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Cash flow · account ledgers · spending analytics</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <Link href="/import" className="btn btn-primary">
             <UploadCloud size={14} />
             Import Statement
@@ -526,6 +567,23 @@ export default function DashboardClient({
             <Landmark size={14} />
             Accounts ({accounts.length})
           </Link>
+          <ExportDropdown
+            transactions={filteredTransactions}
+            metadata={{
+              title: 'Executive Financial Summary & Cash Flow',
+              subtitle: 'Consolidated banking activity and cash positions',
+              accountName: accountFilter !== 'all' ? accounts.find(a => a.id === accountFilter)?.name : 'All Consolidated Accounts',
+              dateRange: rangeLabel,
+              summary: {
+                totalInflow,
+                totalOutflow,
+                net: netFlow,
+                count: filteredTransactions.length,
+              },
+            }}
+            variant="secondary"
+            filenamePrefix="dashboard_statement"
+          />
         </div>
       </motion.div>
 
@@ -898,6 +956,7 @@ export default function DashboardClient({
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
                   <option value="auto">Auto ({effectiveGranularity})</option>
                 </select>
               </div>
