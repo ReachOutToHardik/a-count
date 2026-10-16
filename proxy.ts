@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/api/auth']
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/auth',
+  '/icon.svg',
+  '/wired-outline-298-coins.json',
+  '/manifest.webmanifest',
+]
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -23,6 +29,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|wired-outline-298-coins.json|sitemap.xml|robots.txt).*)',
   ],
 }

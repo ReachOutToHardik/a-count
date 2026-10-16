@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 430" width="430" height="430" fill="none">
+  <!-- Rounded Base Background for crisp high-res browser tab rendering -->
+  <rect width="430" height="430" rx="90" fill="#f8fafc" />
+  
+  <!-- Stack of Coins -->
+  <g stroke="#0f172a" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Coin 4 (Bottom) -->
+    <rect x="62" y="249" width="237" height="56" rx="28" fill="#ffffff" />
+    <!-- Coin 3 -->
+    <rect x="87" y="193" width="237" height="56" rx="28" fill="#ffffff" />
+    <!-- Coin 2 -->
+    <rect x="34" y="137" width="237" height="56" rx="28" fill="#ffffff" />
+    <!-- Coin 1 (Top of stack) -->
+    <rect x="88" y="81" width="237" height="56" rx="28" fill="#ffffff" />
+  </g>
+
+  <!-- Standing Coin with concentric detail ring -->
+  <g transform="translate(274, 249)">
+    <!-- Outer Coin Body -->
+    <circle
+      cx="0"
+      cy="0"
+      r="119.4"
+      fill="#ffffff"
+      stroke="#0f172a"
+      stroke-width="16"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <!-- Inner Secondary Accent Ring -->
+    <circle
+      cx="0"
+      cy="0"
+      r="84.2"
+      fill="none"
+      stroke="#2563eb"
+      stroke-width="15"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <!-- Center Mint Notch -->
+    <circle
+      cx="0"
+      cy="0"
+      r="24"
+      fill="#2563eb"
+      fill-opacity="0.18"
+      stroke="#2563eb"
+      stroke-width="7"
+    />
+  </g>
+</svg>

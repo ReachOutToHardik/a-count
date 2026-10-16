@@ -3,6 +3,7 @@
 import { Suspense, useState, FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
+import AppLogo from '@/components/ui/AppLogo'
 
 function LoginForm() {
   const [passphrase, setPassphrase] = useState('')
@@ -37,9 +38,7 @@ function LoginForm() {
       <div style={{ marginBottom: 26 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <div className="brand-badge" style={{ width: 36, height: 36, borderRadius: 'var(--radius)' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
+            <AppLogo size={28} primaryColor="#ffffff" secondaryColor="#38bdf8" />
           </div>
           <div>
             <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--text-primary)' }}>A-Count</div>
