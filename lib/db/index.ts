@@ -18,8 +18,8 @@ export function getDb() {
   if (!globalForDb.sqlClient) {
     globalForDb.sqlClient = postgres(url, {
       ssl: url.includes('localhost') || url.includes('127.0.0.1') ? false : 'require',
-      max: 10,
-      idle_timeout: 20,
+      max: 5,
+      idle_timeout: 10,
       connect_timeout: 15,
       prepare: false, // Required for Supabase PgBouncer / Connection Pooler on Serverless
     })
