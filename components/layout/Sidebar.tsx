@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   TrendingUp,
   BookOpen,
+  Download,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -125,6 +126,45 @@ export default function Sidebar() {
             </motion.div>
           )
         })}
+
+        <div style={{ marginTop: 'auto', paddingTop: 10 }}>
+          <button
+            onClick={() => (window as any).__openPwaInstallPrompt?.()}
+            className="nav-link"
+            style={{
+              width: '100%',
+              border: 'none',
+              background: 'transparent',
+              textAlign: 'left',
+              cursor: 'pointer',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              transition: 'background 0.2s',
+            }}
+            title="Install A-Count application"
+          >
+            <div className="nav-link-left">
+              <Download size={15} style={{ color: 'var(--accent)' }} />
+              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Install App</span>
+            </div>
+            <span
+              style={{
+                fontSize: 10,
+                background: 'var(--accent-subtle)',
+                color: 'var(--accent)',
+                padding: '2px 6px',
+                borderRadius: 4,
+                fontWeight: 700,
+                letterSpacing: '0.4px',
+              }}
+            >
+              PWA
+            </span>
+          </button>
+        </div>
       </nav>
 
       {/* Workspace Footer */}

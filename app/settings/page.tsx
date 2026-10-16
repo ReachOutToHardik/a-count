@@ -63,6 +63,30 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {/* Progressive Web App (PWA) */}
+      <div className="card mb-4">
+        <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)' }}>
+          <Info size={15} style={{ color: 'var(--accent)' }} />
+          Progressive Web App (PWA) & Offline Mode
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.6 }}>
+          A-Count runs as a standalone desktop or mobile application. Includes background caching, offline emergency viewing, and home screen launch with fast native performance.
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => (window as any).__openPwaInstallPrompt?.()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}
+          >
+            <CheckCircle2 size={14} />
+            Install / Add App to Home Screen
+          </button>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Service Worker active · Offline cache enabled
+          </div>
+        </div>
+      </div>
+
       {/* Architecture & Privacy */}
       <div className="card">
         <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>

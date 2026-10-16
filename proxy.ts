@@ -4,18 +4,24 @@ import type { NextRequest } from 'next/server'
 const PUBLIC_PATHS = [
   '/login',
   '/api/auth',
+  '/sw.js',
+  '/offline.html',
+  '/manifest.webmanifest',
+  '/manifest.json',
   '/icon.svg',
   '/icon.png',
   '/brand-icon.png',
+  '/icons',
+  '/apple-touch-icon',
+  '/favicon',
   '/wired-outline-298-coins.json',
-  '/manifest.webmanifest',
 ]
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow public paths and static assets
-  const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p))
+  const isPublic = PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p))
   if (isPublic) return NextResponse.next()
 
   // Check for session cookie
@@ -31,6 +37,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|icon.png|brand-icon.png|wired-outline-298-coins.json|sitemap.xml|robots.txt).*)',
+    '/((?!_next/static|_next/image|favicon.ico|favicon-.*|apple-touch-icon.*|icon.svg|icon.png|brand-icon.png|icons/.*|sw.js|offline.html|manifest.json|manifest.webmanifest|wired-outline-298-coins.json|sitemap.xml|robots.txt).*)',
   ],
 }

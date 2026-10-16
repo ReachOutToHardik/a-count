@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { UploadCloud, Plus } from 'lucide-react'
+import { UploadCloud, Download } from 'lucide-react'
 import AppLogo from '@/components/ui/AppLogo'
 
 export default function MobileHeader() {
@@ -18,6 +18,15 @@ export default function MobileHeader() {
       </Link>
 
       <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={() => (window as any).__openPwaInstallPrompt?.()}
+          className="btn btn-secondary btn-sm"
+          style={{ padding: '5px 8px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          title="Install App"
+        >
+          <Download size={13} />
+          <span>App</span>
+        </button>
         <Link href="/import" className="btn btn-primary btn-sm" style={{ padding: '5px 10px', fontSize: 11.5 }}>
           <UploadCloud size={13} />
           <span>Import</span>
