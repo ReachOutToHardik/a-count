@@ -204,7 +204,7 @@ export default function NetWorthClient() {
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
   const [hoveredTile, setHoveredTile] = useState<{ id: string; name: string; value: number; categoryTitle: string; color: string; pct: string } | null>(null)
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number; containerWidth: number; containerHeight: number } | null>(null)
 
   // Data states
   const [fds, setFds] = useState<FD[]>([])
@@ -1447,14 +1447,22 @@ export default function NetWorthClient() {
                 >
                   {/* Treemap Visual Canvas */}
                   <div
+                    className="treemap-canvas-container"
                     onMouseMove={(e) => {
-                      setCursorPos({ x: e.clientX, y: e.clientY })
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setCursorPos({
+                        x: e.clientX - rect.left,
+                        y: e.clientY - rect.top,
+                        containerWidth: rect.width,
+                        containerHeight: rect.height,
+                      })
                     }}
                     onMouseLeave={() => {
                       setHoveredTile(null)
                       setCursorPos(null)
                     }}
                     style={{
+                      position: 'relative',
                       flex: 1,
                       minWidth: 0,
                       height: 280,
@@ -1484,6 +1492,8 @@ export default function NetWorthClient() {
                               transform={`translate(${x},${y})`}
                               onClick={() => handleNavigateCategory(categoryId || id)}
                               onMouseEnter={(e) => {
+                                const container = e.currentTarget.closest('.treemap-canvas-container') as HTMLElement | null
+                                const rect = container ? container.getBoundingClientRect() : e.currentTarget.getBoundingClientRect()
                                 setHoveredTile({
                                   id,
                                   name,
@@ -1492,10 +1502,24 @@ export default function NetWorthClient() {
                                   color: fillColor,
                                   pct: pct || ((value / currentTotal) * 100).toFixed(1),
                                 })
-                                setCursorPos({ x: e.clientX, y: e.clientY })
+                                setCursorPos({
+                                  x: e.clientX - rect.left,
+                                  y: e.clientY - rect.top,
+                                  containerWidth: rect.width,
+                                  containerHeight: rect.height,
+                                })
                               }}
                               onMouseMove={(e) => {
-                                setCursorPos({ x: e.clientX, y: e.clientY })
+                                const container = e.currentTarget.closest('.treemap-canvas-container') as HTMLElement | null
+                                if (container) {
+                                  const rect = container.getBoundingClientRect()
+                                  setCursorPos({
+                                    x: e.clientX - rect.left,
+                                    y: e.clientY - rect.top,
+                                    containerWidth: rect.width,
+                                    containerHeight: rect.height,
+                                  })
+                                }
                               }}
                               style={{ cursor: 'pointer' }}
                             >
@@ -1593,6 +1617,82 @@ export default function NetWorthClient() {
                         }}
                       />
                     </ResponsiveContainer>
+
+                    {/* ── CURSOR FLOATING INSPECTION TOOLTIP (PINNED DIRECTLY TO CURSOR) ── */}
+                    {hoveredTile && cursorPos && (() => {
+                      const tooltipWidth = 210
+                      const tooltipHeight = 105
+                      const pad = 12
+
+                      let left = cursorPos.x + pad
+                      let top = cursorPos.y + pad
+
+                      // Flip if overflowing right boundary of treemap
+                      if (left + tooltipWidth > cursorPos.containerWidth) {
+                        left = cursorPos.x - tooltipWidth - pad
+                      }
+                      // Flip if overflowing bottom boundary of treemap
+                      if (top + tooltipHeight > cursorPos.containerHeight) {
+                        top = cursorPos.y - tooltipHeight - pad
+                      }
+
+                      // Clamp strictly within canvas frame
+                      left = Math.max(6, Math.min(left, cursorPos.containerWidth - tooltipWidth - 6))
+                      top = Math.max(6, Math.min(top, cursorPos.containerHeight - tooltipHeight - 6))
+
+                      return (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: `${left}px`,
+                            top: `${top}px`,
+                            zIndex: 50,
+                            pointerEvents: 'none',
+                            background: 'var(--bg-surface)',
+                            border: `1.5px solid ${hoveredTile.color}`,
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '8px 12px',
+                            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.1)',
+                            width: tooltipWidth,
+                            transition: 'left 0.04s ease-out, top 0.04s ease-out',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: 2, background: hoveredTile.color, flexShrink: 0 }} />
+                              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {hoveredTile.categoryTitle}
+                              </span>
+                            </div>
+                            <span
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: 11,
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: 999,
+                                background: `${hoveredTile.color}20`,
+                                color: hoveredTile.color,
+                              }}
+                            >
+                              {hoveredTile.pct}%
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {hoveredTile.name}
+                          </div>
+
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+                            {fmtFull(hoveredTile.value)}
+                          </div>
+
+                          <div style={{ fontSize: 9.5, opacity: 0.8, color: 'var(--text-muted)', marginTop: 4, textAlign: 'right' }}>
+                            Click to open {hoveredTile.categoryTitle} ↗
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Right Side Category Legend Matching Reference Image */}
@@ -1780,60 +1880,6 @@ export default function NetWorthClient() {
                     )
                   })}
                 </div>
-
-                {/* ── CURSOR FLOATING INSPECTION TOOLTIP (MATCHING TREEMAP HOVER) ── */}
-                {hoveredTile && cursorPos && (
-                  <div
-                    style={{
-                      position: 'fixed',
-                      left: (typeof window !== 'undefined' && cursorPos.x > window.innerWidth - 260) ? cursorPos.x - 225 : cursorPos.x + 12,
-                      top: (typeof window !== 'undefined' && cursorPos.y > window.innerHeight - 130) ? cursorPos.y - 110 : cursorPos.y + 12,
-                      zIndex: 99999,
-                      pointerEvents: 'none',
-                      background: 'var(--bg-surface)',
-                      border: `1.5px solid ${hoveredTile.color}`,
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '8px 12px',
-                      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.1)',
-                      minWidth: 165,
-                      maxWidth: 240,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: 2, background: hoveredTile.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {hoveredTile.categoryTitle}
-                        </span>
-                      </div>
-                      <span
-                        style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          padding: '1px 6px',
-                          borderRadius: 999,
-                          background: `${hoveredTile.color}20`,
-                          color: hoveredTile.color,
-                        }}
-                      >
-                        {hoveredTile.pct}%
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {hoveredTile.name}
-                    </div>
-
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
-                      {fmtFull(hoveredTile.value)}
-                    </div>
-
-                    <div style={{ fontSize: 9.5, opacity: 0.8, color: 'var(--text-muted)', marginTop: 4, textAlign: 'right' }}>
-                      Click to open {hoveredTile.categoryTitle} ↗
-                    </div>
-                  </div>
-                )}
               </div>
             )
           })()}
