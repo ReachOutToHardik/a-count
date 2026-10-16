@@ -166,29 +166,13 @@ input, select, textarea { font-family: inherit; }
 }
 
 .brand-badge {
-  width: 30px;
-  height: 30px;
-  background: linear-gradient(135deg, #4f46e5, #6366f1);
-  border-radius: var(--radius);
+  width: 32px;
+  height: 32px;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
   flex-shrink: 0;
-  overflow: hidden;
-}
-
-.brand-badge .lottie-logo-wrap svg path.primary,
-.brand-badge .lottie-logo-wrap svg [stroke="#121331"],
-.brand-badge .lottie-logo-wrap svg [stroke="rgb(18,19,49)"] {
-  stroke: #ffffff !important;
-}
-
-.brand-badge .lottie-logo-wrap svg path.secondary,
-.brand-badge .lottie-logo-wrap svg [stroke="#66d7ee"],
-.brand-badge .lottie-logo-wrap svg [stroke="rgb(102,215,238)"] {
-  stroke: #38bdf8 !important;
 }
 
 .brand-title {

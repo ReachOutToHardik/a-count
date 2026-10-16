@@ -298,7 +298,7 @@ export function exportToCorporatePdf(
     .brand-badge {
       font-size: 9px;
       font-weight: 700;
-      background: #4f46e5;
+      background: #0f172a;
       color: #ffffff;
       padding: 2px 7px;
       border-radius: 4px;
@@ -834,7 +834,7 @@ export function exportNetWorthPdf(data: NetWorthExportData) {
     @media print { .screen-toolbar { display: none !important; } }
     .letterhead { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 16px; }
     .brand-title { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: #0f172a; }
-    .brand-badge { font-size: 9px; font-weight: 700; background: #4f46e5; color: #fff; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; margin-left: 8px; }
+    .brand-badge { font-size: 9px; font-weight: 700; background: #0f172a; color: #fff; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; margin-left: 8px; }
     .brand-sub { font-size: 11px; color: #64748b; margin-top: 3px; font-weight: 500; }
     .doc-meta { text-align: right; font-size: 10.5px; color: #475569; }
     .summary-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }

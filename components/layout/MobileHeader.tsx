@@ -8,8 +8,8 @@ export default function MobileHeader() {
   return (
     <header className="mobile-top-header">
       <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div className="brand-badge" style={{ width: 28, height: 28, borderRadius: 6 }}>
-          <AppLogo size={22} primaryColor="#ffffff" secondaryColor="#38bdf8" />
+        <div className="brand-badge" style={{ width: 30, height: 30 }}>
+          <AppLogo size={30} />
         </div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.3px', lineHeight: 1.1 }}>A-Count</div>

@@ -5,6 +5,8 @@ const PUBLIC_PATHS = [
   '/login',
   '/api/auth',
   '/icon.svg',
+  '/icon.png',
+  '/brand-icon.png',
   '/wired-outline-298-coins.json',
   '/manifest.webmanifest',
 ]
@@ -29,6 +31,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|wired-outline-298-coins.json|sitemap.xml|robots.txt).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|icon.png|brand-icon.png|wired-outline-298-coins.json|sitemap.xml|robots.txt).*)',
   ],
 }

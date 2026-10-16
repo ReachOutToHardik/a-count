@@ -37,8 +37,8 @@ function LoginForm() {
     <div className="login-card slide-up">
       <div style={{ marginBottom: 26 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-          <div className="brand-badge" style={{ width: 36, height: 36, borderRadius: 'var(--radius)' }}>
-            <AppLogo size={28} primaryColor="#ffffff" secondaryColor="#38bdf8" />
+          <div className="brand-badge" style={{ width: 42, height: 42 }}>
+            <AppLogo size={42} />
           </div>
           <div>
             <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.4px', color: 'var(--text-primary)' }}>A-Count</div>

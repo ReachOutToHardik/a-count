@@ -36,14 +36,9 @@ export default function Sidebar() {
     <aside className="sidebar">
       {/* Brand Header */}
       <div className="sidebar-header">
-        <motion.div
-          className="brand-badge"
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.95 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-        >
-          <AppLogo size={24} primaryColor="#ffffff" secondaryColor="#38bdf8" />
-        </motion.div>
+        <div className="brand-badge" style={{ width: 32, height: 32 }}>
+          <AppLogo size={32} />
+        </div>
         <div>
           <div className="brand-title">A-Count</div>
           <div className="brand-subtitle">Personal Finance · INR</div>
