@@ -110,7 +110,8 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
   const [manualDupChecked, setManualDupChecked] = useState(false)
 
   useEffect(() => {
-    setAccountList(accounts)
+    // Merge, don't replace: a refresh must never drop an account created on this page
+    setAccountList(prev => [...accounts, ...prev.filter(p => !accounts.some(a => a.id === p.id))])
     if (!selectedAccount && accounts.length > 0) {
       setSelectedAccount(accounts[0].id)
     }

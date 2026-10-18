@@ -18,12 +18,12 @@ export async function POST(req: Request) {
     }
 
     const sql = getDb()
-    let updatedCount = 0
 
     const toProcess = scope === 'untagged'
       ? transactions.filter(t => t.tags.length === 0)
       : transactions
 
+    const changes: { id: string; tags: string[] }[] = []
     for (const tx of toProcess) {
       const originalTags = [...tx.tags]
       if (scope === 'all') {
@@ -34,18 +34,23 @@ export async function POST(req: Request) {
       // Check if tags changed
       const tagsChanged = JSON.stringify(originalTags.sort()) !== JSON.stringify(tx.tags.sort())
       if (tagsChanged && tx.tags.length > 0) {
-        await sql`
-          UPDATE transactions
-          SET tags = ${tx.tags}, tag_source = 'rule'
-          WHERE id = ${tx.id}
-        `
-        updatedCount++
+        changes.push({ id: tx.id, tags: tx.tags })
       }
+    }
+
+    // One statement instead of one round trip per transaction
+    if (changes.length > 0) {
+      await sql`
+        UPDATE transactions t
+        SET tags = x.tags, tag_source = 'rule'
+        FROM jsonb_to_recordset(${JSON.stringify(changes)}::text::jsonb) AS x(id UUID, tags TEXT[])
+        WHERE t.id = x.id
+      `
     }
 
     return NextResponse.json({
       success: true,
-      updatedCount,
+      updatedCount: changes.length,
       totalProcessed: toProcess.length,
     })
   } catch (err: any) {

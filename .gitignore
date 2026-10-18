@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local test data
+*.xlsx
+
+# local DB backups (contain bank data)
+backups/

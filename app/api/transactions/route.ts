@@ -26,6 +26,48 @@ function sanitizeDate(d: any): string {
   return new Date().toISOString().split('T')[0]
 }
 
+const TAG_SOURCES = ['rule', 'ai', 'manual', 'untagged']
+
+function sanitizeTransaction(t: any) {
+  return {
+    account_id: t.account_id ?? null,
+    date: sanitizeDate(t.date),
+    description: String(t.description ?? ''),
+    amount: isNaN(Number(t.amount)) ? 0 : Math.abs(Number(t.amount)),
+    type: t.type === 'credit' ? 'credit' : 'debit',
+    balance_after: t.balance_after != null && t.balance_after !== '' && !isNaN(Number(t.balance_after)) ? Number(t.balance_after) : null,
+    upi_vpa: t.upi_vpa ?? null,
+    upi_name: t.upi_name ?? null,
+    ref_no: t.ref_no ?? null,
+    tags: Array.isArray(t.tags) ? t.tags.map(String) : [],
+    tag_source: TAG_SOURCES.includes(t.tag_source) ? t.tag_source : null,
+    raw_row: t.raw_row && typeof t.raw_row === 'object' ? t.raw_row : {},
+  }
+}
+
+/**
+ * Inserts all rows in ONE statement (atomic: either every row lands or none).
+ * Rows travel as a single JSON text param, cast via ::text::jsonb so neither
+ * driver double-encodes it into a JSON string.
+ */
+function insertTransactions(sql: any, rows: ReturnType<typeof sanitizeTransaction>[]) {
+  return sql`
+    INSERT INTO transactions (
+      account_id, date, description, amount, type,
+      balance_after, upi_vpa, upi_name, ref_no, tags, tag_source, raw_row
+    )
+    SELECT
+      account_id, date, description, amount, type,
+      balance_after, upi_vpa, upi_name, ref_no, COALESCE(tags, '{}'), tag_source, COALESCE(raw_row, '{}')
+    FROM jsonb_to_recordset(${JSON.stringify(rows)}::text::jsonb) AS x(
+      account_id UUID, date DATE, description TEXT, amount NUMERIC, type TEXT,
+      balance_after NUMERIC, upi_vpa TEXT, upi_name TEXT, ref_no TEXT,
+      tags TEXT[], tag_source TEXT, raw_row JSONB
+    )
+    RETURNING *
+  `
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -34,64 +76,12 @@ export async function POST(req: Request) {
     // Handle batch insert
     if (Array.isArray(body)) {
       if (body.length === 0) return NextResponse.json({ count: 0 })
-
-      // Batch insert transactions into PostgreSQL
-      for (const t of body) {
-        const safeDate = sanitizeDate(t.date)
-        const safeAmount = isNaN(Number(t.amount)) ? 0 : Math.abs(Number(t.amount))
-        const safeType = t.type === 'credit' ? 'credit' : 'debit'
-        const safeBalance = t.balance_after != null && !isNaN(Number(t.balance_after)) ? Number(t.balance_after) : null
-
-        await sql`
-          INSERT INTO transactions (
-            account_id, date, description, amount, type,
-            balance_after, upi_vpa, upi_name, ref_no, tags, tag_source, raw_row
-          ) VALUES (
-            ${t.account_id},
-            ${safeDate},
-            ${t.description ?? ''},
-            ${safeAmount},
-            ${safeType},
-            ${safeBalance},
-            ${t.upi_vpa ?? null},
-            ${t.upi_name ?? null},
-            ${t.ref_no ?? null},
-            ${Array.isArray(t.tags) ? t.tags : []},
-            ${t.tag_source ?? null},
-            ${JSON.stringify(t.raw_row ?? {})}
-          )
-        `
-      }
-      return NextResponse.json({ count: body.length }, { status: 201 })
+      const inserted = await insertTransactions(sql, body.map(sanitizeTransaction))
+      return NextResponse.json({ count: inserted.length }, { status: 201 })
     }
 
     // Single transaction insert
-    const t = body
-    const safeDate = sanitizeDate(t.date)
-    const safeAmount = isNaN(Number(t.amount)) ? 0 : Math.abs(Number(t.amount))
-    const safeType = t.type === 'credit' ? 'credit' : 'debit'
-    const safeBalance = t.balance_after != null && !isNaN(Number(t.balance_after)) ? Number(t.balance_after) : null
-
-    const [inserted] = await sql`
-      INSERT INTO transactions (
-        account_id, date, description, amount, type,
-        balance_after, upi_vpa, upi_name, ref_no, tags, tag_source, raw_row
-      ) VALUES (
-        ${t.account_id},
-        ${safeDate},
-        ${t.description ?? ''},
-        ${safeAmount},
-        ${safeType},
-        ${safeBalance},
-        ${t.upi_vpa ?? null},
-        ${t.upi_name ?? null},
-        ${t.ref_no ?? null},
-        ${Array.isArray(t.tags) ? t.tags : []},
-        ${t.tag_source ?? null},
-        ${JSON.stringify(t.raw_row ?? {})}
-      )
-      RETURNING *
-    `
+    const [inserted] = await insertTransactions(sql, [sanitizeTransaction(body)])
     return NextResponse.json({ transaction: inserted }, { status: 201 })
   } catch (err: any) {
     console.error('API create transaction error:', err)

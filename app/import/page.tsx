@@ -3,6 +3,8 @@ import { Metadata } from 'next'
 import { getAccounts, getTagRules, getTags } from '@/lib/db'
 import ImportClient from './ImportClient'
 
+// Always read fresh data from the DB (otherwise Next prerenders this page once at build time)
+export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Import Statement' }
 
 export default async function ImportPage() {

@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const sql = getDb()
     const [inserted] = await sql`
       INSERT INTO tag_rules (name, priority, conditions, tags)
-      VALUES (${name}, ${priority}, ${JSON.stringify(conditions)}, ${tags})
+      VALUES (${name}, ${priority}, ${JSON.stringify(conditions)}::text::jsonb, ${tags})
       RETURNING *
     `
     return NextResponse.json({ rule: inserted }, { status: 201 })

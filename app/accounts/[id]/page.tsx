@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { getAccountById, getTransactions, getTags } from '@/lib/db'
 import AccountDetailClient from './AccountDetailClient'
 
+// Always read fresh data from the DB (otherwise Next prerenders this page once at build time)
+export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Account Detail' }
 
 export default async function AccountDetailPage({ params }: { params: Promise<{ id: string }> }) {

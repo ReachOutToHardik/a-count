@@ -16,7 +16,7 @@ export async function PUT(
       SET
         name = COALESCE(${name}, name),
         priority = COALESCE(${priority}, priority),
-        conditions = COALESCE(${conditions ? JSON.stringify(conditions) : null}, conditions),
+        conditions = COALESCE(${conditions ? JSON.stringify(conditions) : null}::text::jsonb, conditions),
         tags = COALESCE(${tags}, tags)
       WHERE id = ${id}
       RETURNING *

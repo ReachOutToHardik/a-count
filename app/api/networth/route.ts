@@ -324,7 +324,7 @@ export async function POST(req: Request) {
             icon = COALESCE(${icon}, icon),
             target_amount = COALESCE(${target_amount}, target_amount),
             current_amount = COALESCE(${current_amount}, current_amount),
-            target_date = ${target_date || null},
+            target_date = CASE WHEN ${'target_date' in data} THEN ${target_date || null}::date ELSE target_date END,
             color = COALESCE(${color}, color),
             notes = COALESCE(${notes}, notes)
         WHERE id = ${id}

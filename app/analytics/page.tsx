@@ -2,6 +2,8 @@ import { Metadata } from 'next'
 import { getTransactions, getAccounts, getTags } from '@/lib/db'
 import AnalyticsClient from './AnalyticsClient'
 
+// Always read fresh data from the DB (otherwise Next prerenders this page once at build time)
+export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Analytics' }
 
 export default async function AnalyticsPage() {

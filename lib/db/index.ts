@@ -119,7 +119,7 @@ export async function getAccounts(): Promise<Account[]> {
     const rows = await sql`SELECT * FROM accounts ORDER BY created_at ASC`
     return rows.map(mapAccount)
   } catch (err: any) {
-    console.error('Neon getAccounts error:', err.message)
+    console.error('DB getAccounts error:', err.message)
     return []
   }
 }
@@ -131,7 +131,7 @@ export async function getAccountById(id: string): Promise<Account | null> {
     if (rows.length === 0) return null
     return mapAccount(rows[0])
   } catch (err: any) {
-    console.error('Neon getAccountById error:', err.message)
+    console.error('DB getAccountById error:', err.message)
     return null
   }
 }
@@ -163,7 +163,7 @@ export async function getTransactions(options?: { accountId?: string; limit?: nu
 
     return rows.map(mapTransaction)
   } catch (err: any) {
-    console.error('Neon getTransactions error:', err.message)
+    console.error('DB getTransactions error:', err.message)
     return []
   }
 }
@@ -174,7 +174,7 @@ export async function getTags(): Promise<Tag[]> {
     const rows = await sql`SELECT * FROM tags ORDER BY name ASC`
     return rows.map(mapTag)
   } catch (err: any) {
-    console.error('Neon getTags error:', err.message)
+    console.error('DB getTags error:', err.message)
     return []
   }
 }
@@ -185,7 +185,7 @@ export async function getTagRules(): Promise<TagRule[]> {
     const rows = await sql`SELECT * FROM tag_rules ORDER BY priority ASC, name ASC`
     return rows.map(mapTagRule)
   } catch (err: any) {
-    console.error('Neon getTagRules error:', err.message)
+    console.error('DB getTagRules error:', err.message)
     return []
   }
 }

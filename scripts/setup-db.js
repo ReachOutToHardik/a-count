@@ -29,6 +29,7 @@ if (isNeon) {
   const postgres = require('postgres')
   sql = postgres(databaseUrl, {
     ssl: databaseUrl.includes('localhost') ? false : 'require',
+    prepare: false, // Supabase transaction pooler (port 6543) does not support prepared statements
     connect_timeout: 15,
   })
 }

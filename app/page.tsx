@@ -4,6 +4,8 @@ import { computeMonthlyStats } from '@/lib/utils'
 import { Transaction, Account } from '@/lib/types'
 import DashboardClient from './DashboardClient'
 
+// Always read fresh data from the DB (otherwise Next prerenders this page once at build time)
+export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Dashboard' }
 
 export default async function DashboardPage() {

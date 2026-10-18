@@ -2,6 +2,8 @@ import { Metadata } from 'next'
 import { getTags, getTagRules } from '@/lib/db'
 import TagsClient from './TagsClient'
 
+// Always read fresh data from the DB (otherwise Next prerenders this page once at build time)
+export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Tags & Rules' }
 
 export default async function TagsPage() {

@@ -1,5 +1,5 @@
--- A-Count Database Schema for Neon PostgreSQL
--- Run this in your Neon Console -> SQL Editor
+-- A-Count Database Schema (PostgreSQL / Supabase)
+-- Applied by `node scripts/setup-db.js` (or paste into the Supabase SQL Editor)
 
 -- ─── Accounts ────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS accounts (
@@ -69,6 +69,16 @@ CREATE TABLE IF NOT EXISTS import_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- ─── Lock down Supabase Data API ─────────────────────────────────────────────
+-- The app talks to Postgres directly (DATABASE_URL), never through the anon key.
+-- Enabling RLS with no policies blocks anon/authenticated access via the REST API,
+-- while the table owner (the postgres user in DATABASE_URL) keeps full access.
+ALTER TABLE accounts        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tags            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tag_rules       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE import_sessions ENABLE ROW LEVEL SECURITY;
+
 -- ─── Seed: Indian Curated Tags ──────────────────────────────────────────
 INSERT INTO tags (name, color, icon) VALUES
   ('food', '#f97316', 'utensils'),
@@ -118,7 +128,8 @@ INSERT INTO tags (name, color, icon) VALUES
 ON CONFLICT (name) DO UPDATE SET color = EXCLUDED.color, icon = EXCLUDED.icon;
 
 -- ─── Seed: Indian Comprehensive Automated Rules ─────────────────────────
-INSERT INTO tag_rules (name, priority, conditions, tags) VALUES
+INSERT INTO tag_rules (name, priority, conditions, tags)
+SELECT v.name, v.priority, v.conditions::jsonb, v.tags FROM (VALUES
   ('Swiggy Food Delivery', 10, '[{"field":"description","op":"contains","value":"swiggy"}]', ARRAY['food','delivery']),
   ('Bundl Technologies (Swiggy)', 11, '[{"field":"description","op":"contains","value":"bundl"}]', ARRAY['food','delivery']),
   ('Zomato Food Delivery', 12, '[{"field":"description","op":"contains","value":"zomato"}]', ARRAY['food','delivery']),
@@ -332,4 +343,6 @@ INSERT INTO tag_rules (name, priority, conditions, tags) VALUES
   ('Debit Card Annual Fee', 229, '[{"field":"description","op":"contains","value":"annual fee"}]', ARRAY['bank-charges']),
   ('NEFT Online Bank Transfer', 230, '[{"field":"description","op":"contains","value":"neft"}]', ARRAY['transfer']),
   ('IMPS Quick Money Transfer', 231, '[{"field":"description","op":"contains","value":"imps"}]', ARRAY['transfer']),
-  ('RTGS High-Value Bank Transfer', 232, '[{"field":"description","op":"contains","value":"rtgs"}]', ARRAY['transfer']);
+  ('RTGS High-Value Bank Transfer', 232, '[{"field":"description","op":"contains","value":"rtgs"}]', ARRAY['transfer'])
+) AS v(name, priority, conditions, tags)
+WHERE NOT EXISTS (SELECT 1 FROM tag_rules r WHERE r.name = v.name);
