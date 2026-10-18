@@ -58,6 +58,13 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
+  // Local copy so creates/edits/deletes show instantly; server refresh re-syncs it
+  const [accountList, setAccountList] = useState<Account[]>(accounts)
+  const [syncedAccounts, setSyncedAccounts] = useState(accounts)
+  if (accounts !== syncedAccounts) {
+    setSyncedAccounts(accounts)
+    setAccountList(accounts)
+  }
   const router = useRouter()
 
   function openNew() {
@@ -105,6 +112,12 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
         throw new Error(data.error || 'Failed to save account.')
       }
 
+      const saved = data.account as Account | undefined
+      if (saved) {
+        setAccountList(prev => editId
+          ? prev.map(a => (a.id === saved.id ? saved : a))
+          : [...prev, saved])
+      }
       setShowModal(false)
       router.refresh()
     } catch (err: any) {
@@ -116,17 +129,22 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
 
   async function handleDelete(id: string) {
     if (!confirm('Are you sure you want to delete this account and all its transaction history?')) return
-    await fetch(`/api/accounts/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/accounts/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      alert('Failed to delete account.')
+      return
+    }
+    setAccountList(prev => prev.filter(a => a.id !== id))
     router.refresh()
   }
 
   // Consolidated ledger balance across all accounts
-  const totalBalance = accounts.reduce((sum, acct) => {
+  const totalBalance = accountList.reduce((sum, acct) => {
     const stats = accountStats[acct.id] || { credit: 0, debit: 0, count: 0 }
     return sum + (stats.credit - stats.debit)
   }, 0)
 
-  const totalTransactions = accounts.reduce((sum, acct) => {
+  const totalTransactions = accountList.reduce((sum, acct) => {
     const stats = accountStats[acct.id] || { credit: 0, debit: 0, count: 0 }
     return sum + stats.count
   }, 0)
@@ -156,7 +174,7 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
       <div className="summary-ribbon" style={{ marginBottom: 20 }}>
         <div className="summary-item">
           <span className="summary-item-label">Total Accounts:</span>
-          <span className="summary-item-val">{accounts.length}</span>
+          <span className="summary-item-val">{accountList.length}</span>
         </div>
         <div style={{ width: 1, height: 16, background: 'var(--border)' }} />
         <div className="summary-item">
@@ -179,7 +197,7 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
       </div>
 
       {/* Account Cards Grid */}
-      {accounts.length === 0 ? (
+      {accountList.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon-wrap">
             <Landmark size={22} style={{ color: 'var(--accent)' }} />
@@ -192,7 +210,7 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
         </div>
       ) : (
         <div className="grid-auto">
-          {accounts.map(acct => {
+          {accountList.map(acct => {
             const stats = accountStats[acct.id] || { credit: 0, debit: 0, count: 0 }
             const balance = stats.credit - stats.debit
             return (

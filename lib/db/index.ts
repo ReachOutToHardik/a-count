@@ -19,7 +19,10 @@ export function getDb() {
     globalForDb.sqlClient = postgres(url, {
       ssl: url.includes('localhost') || url.includes('127.0.0.1') ? false : 'require',
       max: 5,
-      idle_timeout: 10,
+      // Opening a connection to the pooler costs ~3s (TLS + auth round trips), so keep idle
+      // connections around between clicks instead of dropping them after 10s.
+      idle_timeout: 120,
+      max_lifetime: 60 * 30,
       connect_timeout: 15,
       prepare: false, // Required for Supabase PgBouncer / Connection Pooler on Serverless
     })
@@ -136,6 +139,7 @@ export async function getAccountById(id: string): Promise<Account | null> {
   }
 }
 
+// raw_row (the original statement row) is left out: the UI never shows it and it is ~half the payload
 export async function getTransactions(options?: { accountId?: string; limit?: number }): Promise<Transaction[]> {
   try {
     const sql = getDb()
@@ -144,7 +148,9 @@ export async function getTransactions(options?: { accountId?: string; limit?: nu
 
     if (options?.accountId) {
       rows = await sql`
-        SELECT t.*, a.name as account_name, a.color as account_color, a.bank_name as account_bank_name
+        SELECT t.id, t.account_id, t.date, t.description, t.amount, t.type, t.balance_after,
+               t.upi_vpa, t.upi_name, t.ref_no, t.tags, t.tag_source, t.created_at,
+               a.name as account_name, a.color as account_color, a.bank_name as account_bank_name
         FROM transactions t
         LEFT JOIN accounts a ON t.account_id = a.id
         WHERE t.account_id = ${options.accountId}
@@ -153,7 +159,9 @@ export async function getTransactions(options?: { accountId?: string; limit?: nu
       `
     } else {
       rows = await sql`
-        SELECT t.*, a.name as account_name, a.color as account_color, a.bank_name as account_bank_name
+        SELECT t.id, t.account_id, t.date, t.description, t.amount, t.type, t.balance_after,
+               t.upi_vpa, t.upi_name, t.ref_no, t.tags, t.tag_source, t.created_at,
+               a.name as account_name, a.color as account_color, a.bank_name as account_bank_name
         FROM transactions t
         LEFT JOIN accounts a ON t.account_id = a.id
         ORDER BY t.date DESC, t.created_at DESC
@@ -187,5 +195,30 @@ export async function getTagRules(): Promise<TagRule[]> {
   } catch (err: any) {
     console.error('DB getTagRules error:', err.message)
     return []
+  }
+}
+
+export type AccountStats = Record<string, { credit: number; debit: number; count: number }>
+
+/** Per-account credit/debit totals, summed in the DB instead of shipping every transaction. */
+export async function getAccountStats(): Promise<AccountStats> {
+  try {
+    const sql = getDb()
+    const rows = await sql`
+      SELECT account_id,
+             COALESCE(SUM(amount) FILTER (WHERE type = 'credit'), 0) AS credit,
+             COALESCE(SUM(amount) FILTER (WHERE type = 'debit'), 0) AS debit,
+             COUNT(*) AS count
+      FROM transactions
+      GROUP BY account_id
+    `
+    const stats: AccountStats = {}
+    for (const r of rows) {
+      stats[r.account_id] = { credit: Number(r.credit), debit: Number(r.debit), count: Number(r.count) }
+    }
+    return stats
+  } catch (err: any) {
+    console.error('DB getAccountStats error:', err.message)
+    return {}
   }
 }
