@@ -10,6 +10,22 @@ export async function GET(req: Request) {
   return NextResponse.json({ transactions })
 }
 
+function sanitizeDate(d: any): string {
+  if (!d) return new Date().toISOString().split('T')[0]
+  const str = String(d).trim()
+  // Strict YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const parsed = new Date(str + 'T00:00:00Z')
+    if (!isNaN(parsed.getTime())) return str
+  }
+  // Try standard parse
+  const dt = new Date(str)
+  if (!isNaN(dt.getTime())) {
+    return dt.toISOString().split('T')[0]
+  }
+  return new Date().toISOString().split('T')[0]
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -19,23 +35,28 @@ export async function POST(req: Request) {
     if (Array.isArray(body)) {
       if (body.length === 0) return NextResponse.json({ count: 0 })
 
-      // Batch insert transactions into Neon PostgreSQL
+      // Batch insert transactions into PostgreSQL
       for (const t of body) {
+        const safeDate = sanitizeDate(t.date)
+        const safeAmount = isNaN(Number(t.amount)) ? 0 : Math.abs(Number(t.amount))
+        const safeType = t.type === 'credit' ? 'credit' : 'debit'
+        const safeBalance = t.balance_after != null && !isNaN(Number(t.balance_after)) ? Number(t.balance_after) : null
+
         await sql`
           INSERT INTO transactions (
             account_id, date, description, amount, type,
             balance_after, upi_vpa, upi_name, ref_no, tags, tag_source, raw_row
           ) VALUES (
             ${t.account_id},
-            ${t.date},
+            ${safeDate},
             ${t.description ?? ''},
-            ${t.amount},
-            ${t.type},
-            ${t.balance_after ?? null},
+            ${safeAmount},
+            ${safeType},
+            ${safeBalance},
             ${t.upi_vpa ?? null},
             ${t.upi_name ?? null},
             ${t.ref_no ?? null},
-            ${t.tags ?? []},
+            ${Array.isArray(t.tags) ? t.tags : []},
             ${t.tag_source ?? null},
             ${JSON.stringify(t.raw_row ?? {})}
           )
@@ -46,21 +67,26 @@ export async function POST(req: Request) {
 
     // Single transaction insert
     const t = body
+    const safeDate = sanitizeDate(t.date)
+    const safeAmount = isNaN(Number(t.amount)) ? 0 : Math.abs(Number(t.amount))
+    const safeType = t.type === 'credit' ? 'credit' : 'debit'
+    const safeBalance = t.balance_after != null && !isNaN(Number(t.balance_after)) ? Number(t.balance_after) : null
+
     const [inserted] = await sql`
       INSERT INTO transactions (
         account_id, date, description, amount, type,
         balance_after, upi_vpa, upi_name, ref_no, tags, tag_source, raw_row
       ) VALUES (
         ${t.account_id},
-        ${t.date},
+        ${safeDate},
         ${t.description ?? ''},
-        ${t.amount},
-        ${t.type},
-        ${t.balance_after ?? null},
+        ${safeAmount},
+        ${safeType},
+        ${safeBalance},
         ${t.upi_vpa ?? null},
         ${t.upi_name ?? null},
         ${t.ref_no ?? null},
-        ${t.tags ?? []},
+        ${Array.isArray(t.tags) ? t.tags : []},
         ${t.tag_source ?? null},
         ${JSON.stringify(t.raw_row ?? {})}
       )

@@ -10,16 +10,24 @@ export async function PUT(
     const body = await req.json()
     const { name, bank_name, account_type, currency, color, last_imported_at } = body
 
+    let safeLastImported: string | null = null
+    if (last_imported_at) {
+      const d = new Date(last_imported_at)
+      if (!isNaN(d.getTime())) {
+        safeLastImported = d.toISOString()
+      }
+    }
+
     const sql = getDb()
     const [updated] = await sql`
       UPDATE accounts
       SET
-        name = COALESCE(${name}, name),
-        bank_name = COALESCE(${bank_name}, bank_name),
-        account_type = COALESCE(${account_type}, account_type),
-        currency = COALESCE(${currency}, currency),
-        color = COALESCE(${color}, color),
-        last_imported_at = COALESCE(${last_imported_at ? new Date(last_imported_at).toISOString() : null}, last_imported_at)
+        name = COALESCE(${name?.trim() || null}, name),
+        bank_name = COALESCE(${bank_name?.trim() || null}, bank_name),
+        account_type = COALESCE(${account_type || null}, account_type),
+        currency = COALESCE(${currency || null}, currency),
+        color = COALESCE(${color || null}, color),
+        last_imported_at = COALESCE(${safeLastImported}, last_imported_at)
       WHERE id = ${id}
       RETURNING *
     `

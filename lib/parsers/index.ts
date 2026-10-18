@@ -93,13 +93,25 @@ export function parseDate(val: any): string {
     }
   }
 
-  // 7. Fallback standard Date parse
+  // 7. Compact 8-digit: YYYYMMDD (e.g. 20260901)
+  const yyyymmdd = str.match(/^(\d{4})(\d{2})(\d{2})$/)
+  if (yyyymmdd) {
+    const [, y, m, d] = yyyymmdd
+    const mNum = parseInt(m, 10)
+    const dNum = parseInt(d, 10)
+    if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+      return `${y}-${m}-${d}`
+    }
+  }
+
+  // 8. Fallback standard Date parse
   const parsed = new Date(str)
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().split('T')[0]
   }
 
-  return str
+  // Safe fallback to current date so postgres DATE column never throws 'Invalid time value'
+  return new Date().toISOString().split('T')[0]
 }
 
 /**
@@ -161,8 +173,14 @@ export function parseRows(
       }
 
       if (amount === 0) continue // Skip zero-amount rows
+      if (!dateRaw && !descRaw) continue // Skip rows without date or description
 
       const description = descRaw?.toString().trim() || ''
+      // Skip statement summary/total rows
+      if (/^(total|closing balance|opening balance|summary|brought forward|b\/f|c\/f|carried forward|page \d+)/i.test(description) && amount === 0) {
+        continue
+      }
+
       const { upi_vpa, upi_name } = extractUpiInfo(description)
 
       results.push({

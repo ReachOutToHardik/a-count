@@ -31,11 +31,27 @@ export function getDb() {
 /**
  * Normalizes a transaction row from PostgreSQL into our TypeScript Transaction interface.
  */
+function safeDateString(val: any): string {
+  if (!val) return new Date().toISOString().split('T')[0]
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) return val.split('T')[0]
+  const d = new Date(val)
+  return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+}
+
+function safeIsoString(val: any): string {
+  if (!val) return new Date().toISOString()
+  const d = new Date(val)
+  return !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString()
+}
+
+/**
+ * Normalizes a transaction row from PostgreSQL into our TypeScript Transaction interface.
+ */
 function mapTransaction(row: any): Transaction {
   return {
     id: row.id,
     account_id: row.account_id,
-    date: typeof row.date === 'string' ? row.date.split('T')[0] : new Date(row.date).toISOString().split('T')[0],
+    date: safeDateString(row.date),
     description: row.description ?? '',
     amount: parseFloat(row.amount ?? '0'),
     type: row.type as 'credit' | 'debit',
@@ -46,7 +62,7 @@ function mapTransaction(row: any): Transaction {
     tags: Array.isArray(row.tags) ? row.tags : (typeof row.tags === 'string' ? JSON.parse(row.tags || '[]') : []),
     tag_source: row.tag_source ?? null,
     raw_row: typeof row.raw_row === 'string' ? JSON.parse(row.raw_row || '{}') : (row.raw_row ?? {}),
-    created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+    created_at: safeIsoString(row.created_at),
     accounts: row.account_name ? {
       name: row.account_name,
       color: row.account_color ?? '#2563eb',
@@ -63,8 +79,10 @@ function mapAccount(row: any): Account {
     account_type: (row.account_type ?? 'savings') as AccountType,
     currency: row.currency ?? 'INR',
     color: row.color ?? '#2563eb',
-    last_imported_at: row.last_imported_at ? new Date(row.last_imported_at).toISOString() : null,
-    created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+    last_imported_at: row.last_imported_at && !isNaN(new Date(row.last_imported_at).getTime())
+      ? new Date(row.last_imported_at).toISOString()
+      : null,
+    created_at: safeIsoString(row.created_at),
   }
 }
 

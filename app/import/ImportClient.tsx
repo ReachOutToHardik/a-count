@@ -33,6 +33,7 @@ import { runRulesEngine, extractUpiInfo } from '@/lib/tagger/engine'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import TagPill from '@/components/tags/TagPill'
 import TagPickerModal from '@/components/tags/TagPickerModal'
+import ModalPortal from '@/components/ui/ModalPortal'
 import {
   TxLike,
   BatchDuplicateResult,
@@ -64,7 +65,18 @@ const BANK_PRESETS = [
 export default function ImportClient({ accounts, rules, tagMap }: Props) {
   const [step, setStep] = useState<Step>('drop')
   const [dragging, setDragging] = useState(false)
+  const [accountList, setAccountList] = useState<Account[]>(accounts)
   const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id ?? '')
+  const [showNewAccountModal, setShowNewAccountModal] = useState(false)
+  const [newAccountForm, setNewAccountForm] = useState({
+    name: '',
+    bank_name: '',
+    account_type: 'credit' as Account['account_type'],
+    color: '#2563eb',
+  })
+  const [creatingAccount, setCreatingAccount] = useState(false)
+  const [newAccountError, setNewAccountError] = useState<string | null>(null)
+
   const [headers, setHeaders] = useState<string[]>([])
   const [rawRows, setRawRows] = useState<Record<string, string>[]>([])
   const [columnMap, setColumnMap] = useState<Record<string, string>>({})
@@ -98,14 +110,56 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
   const [manualDupChecked, setManualDupChecked] = useState(false)
 
   useEffect(() => {
+    setAccountList(accounts)
+    if (!selectedAccount && accounts.length > 0) {
+      setSelectedAccount(accounts[0].id)
+    }
+  }, [accounts, selectedAccount])
+
+  useEffect(() => {
     const tab = searchParams?.get('tab')
     const acc = searchParams?.get('account')
-    if (acc && accounts.some(a => a.id === acc)) {
+    if (acc && accountList.some(a => a.id === acc)) {
       setSelectedAccount(acc)
     }
     if (tab === 'manual') setStep('manual')
     else if (tab === 'statement') setStep('drop')
-  }, [searchParams, accounts])
+  }, [searchParams, accountList])
+
+  async function handleCreateAccount() {
+    if (!newAccountForm.name.trim()) {
+      setNewAccountError('Account label is required.')
+      return
+    }
+    setCreatingAccount(true)
+    setNewAccountError(null)
+    try {
+      const res = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAccountForm),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create account')
+      }
+      const created = data.account
+      setAccountList(prev => [...prev, created])
+      setSelectedAccount(created.id)
+      setShowNewAccountModal(false)
+      setNewAccountForm({
+        name: '',
+        bank_name: '',
+        account_type: 'credit',
+        color: '#2563eb',
+      })
+      router.refresh()
+    } catch (err: any) {
+      setNewAccountError(err.message || 'Error creating account')
+    } finally {
+      setCreatingAccount(false)
+    }
+  }
 
   // Manual entry state
   const [manualForm, setManualForm] = useState({
@@ -451,11 +505,18 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
 
     runRulesEngine([tx] as any, rules)
 
-    await fetch('/api/transactions', {
+    const res = await fetch('/api/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tx),
     })
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      setError(errData.error || 'Failed to save transaction')
+      setManualSaving(false)
+      return
+    }
 
     setManualSaving(false)
     setManualForm(f => ({ ...f, description: '', amount: '', ref_no: '' }))
@@ -464,17 +525,24 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
 
   const stepIdx = { drop: 0, manual: 0, map: 1, preview: 2, importing: 3, done: 3 }[step]
 
-  if (accounts.length === 0) {
+  if (accountList.length === 0) {
     return (
       <div className="empty-state" style={{ marginTop: 60 }}>
         <div className="empty-state-icon-wrap">
           <Landmark size={22} style={{ color: 'var(--accent)' }} />
         </div>
-        <div className="empty-state-title">No bank accounts linked</div>
-        <div className="empty-state-sub">Please create an account first before importing your statements.</div>
-        <Link href="/accounts" className="btn btn-primary" style={{ marginTop: 16 }}>
-          <Plus size={14} /> Add First Account
-        </Link>
+        <div className="empty-state-title">No bank or credit accounts linked</div>
+        <div className="empty-state-sub">Please create a bank or credit card account first to start importing statements.</div>
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: 16 }}
+          onClick={() => {
+            setNewAccountError(null)
+            setShowNewAccountModal(true)
+          }}
+        >
+          <Plus size={14} /> Add Bank / Credit Account
+        </button>
       </div>
     )
   }
@@ -490,23 +558,41 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
       </div>
 
       {/* Target Account Selector */}
-      <div className="card mb-4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px' }}>
+      <div className="card mb-4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Destination Account
+            Destination Ledger
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
             Transactions will be recorded under this ledger
           </div>
         </div>
-        <select
-          className="select"
-          value={selectedAccount}
-          onChange={e => setSelectedAccount(e.target.value)}
-          style={{ width: 280, fontWeight: 600 }}
-        >
-          {accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.bank_name})</option>)}
-        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <select
+            className="select"
+            value={selectedAccount}
+            onChange={e => setSelectedAccount(e.target.value)}
+            style={{ width: 280, fontWeight: 600 }}
+          >
+            {accountList.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.bank_name || a.account_type})
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setNewAccountError(null)
+              setShowNewAccountModal(true)
+            }}
+            title="Create New Account"
+            style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}
+          >
+            <Plus size={14} /> New Account
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -1084,6 +1170,109 @@ export default function ImportClient({ accounts, rules, tagMap }: Props) {
           onTagCreated={handleTagCreated}
           title="Create New Custom Tag"
         />
+      )}
+
+      {/* Quick Add Account Modal */}
+      {showNewAccountModal && (
+        <ModalPortal>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 999999,
+              padding: 16,
+            }}
+            onClick={e => e.target === e.currentTarget && setShowNewAccountModal(false)}
+          >
+            <div className="modal slide-up" style={{ maxWidth: 460, width: '100%', background: '#ffffff' }}>
+              <div className="modal-header">
+                <div className="modal-title">Create New Ledger Account</div>
+                <button className="btn btn-ghost btn-icon" onClick={() => setShowNewAccountModal(false)}>✕</button>
+              </div>
+              <div className="modal-body">
+                {newAccountError && (
+                  <div style={{
+                    background: 'var(--red-subtle)',
+                    border: '1px solid var(--red-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '8px 12px',
+                    fontSize: 12,
+                    color: 'var(--red)',
+                    marginBottom: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}>
+                    <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                    <span>{newAccountError}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div className="field">
+                    <label className="field-label">Account Label <span className="field-required">*</span></label>
+                    <input
+                      className="input"
+                      placeholder="e.g. HDFC Millennia Credit Card"
+                      value={newAccountForm.name}
+                      onChange={e => setNewAccountForm(f => ({ ...f, name: e.target.value }))}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label">Bank Institution</label>
+                    <input
+                      className="input"
+                      placeholder="e.g. HDFC Bank, ICICI Bank, SBI"
+                      value={newAccountForm.bank_name}
+                      onChange={e => setNewAccountForm(f => ({ ...f, bank_name: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="grid-2">
+                    <div className="field">
+                      <label className="field-label">Account Type</label>
+                      <select
+                        className="select"
+                        value={newAccountForm.account_type}
+                        onChange={e => setNewAccountForm(f => ({ ...f, account_type: e.target.value as any }))}
+                      >
+                        <option value="credit">Credit Card</option>
+                        <option value="savings">Savings Account</option>
+                        <option value="current">Current Account</option>
+                        <option value="wallet">Wallet / Pre-paid</option>
+                      </select>
+                    </div>
+
+                    <div className="field">
+                      <label className="field-label">Currency</label>
+                      <input
+                        className="input"
+                        value="INR (₹)"
+                        disabled
+                        style={{ background: 'var(--bg-subtle)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowNewAccountModal(false)}>Cancel</button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleCreateAccount}
+                  disabled={!newAccountForm.name.trim() || creatingAccount}
+                >
+                  {creatingAccount ? <><Loader2 size={13} className="spin" /> Creating…</> : 'Create & Select'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
     </div>
   )

@@ -10,12 +10,17 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const { name, bank_name = '', account_type = 'savings', currency = 'INR', color = '#2563eb' } = body
-    if (!name) return NextResponse.json({ error: 'Account name is required' }, { status: 400 })
+    if (!name || !name.trim()) {
+      return NextResponse.json({ error: 'Account name is required' }, { status: 400 })
+    }
+
+    const validTypes = ['savings', 'current', 'credit', 'wallet']
+    const safeType = validTypes.includes(account_type) ? account_type : 'savings'
 
     const sql = getDb()
     const [inserted] = await sql`
       INSERT INTO accounts (name, bank_name, account_type, currency, color)
-      VALUES (${name}, ${bank_name}, ${account_type}, ${currency}, ${color})
+      VALUES (${name.trim()}, ${bank_name?.trim() || ''}, ${safeType}, ${currency || 'INR'}, ${color || '#2563eb'})
       RETURNING *
     `
     return NextResponse.json({ account: inserted }, { status: 201 })

@@ -23,6 +23,7 @@ import {
   BarChart3,
   Sparkles,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react'
 
 const ACCOUNT_COLORS = [
@@ -56,11 +57,13 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
   const [form, setForm] = useState<AccountForm>(EMPTY_FORM)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [modalError, setModalError] = useState<string | null>(null)
   const router = useRouter()
 
   function openNew() {
     setForm(EMPTY_FORM)
     setEditId(null)
+    setModalError(null)
     setShowModal(true)
   }
 
@@ -73,27 +76,42 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
       color: acct.color,
     })
     setEditId(acct.id)
+    setModalError(null)
     setShowModal(true)
   }
 
   async function handleSave() {
-    setSaving(true)
-    if (editId) {
-      await fetch(`/api/accounts/${editId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-    } else {
-      await fetch('/api/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
+    if (!form.name.trim()) {
+      setModalError('Account label is required.')
+      return
     }
-    setSaving(false)
-    setShowModal(false)
-    router.refresh()
+    setSaving(true)
+    setModalError(null)
+    try {
+      const res = editId
+        ? await fetch(`/api/accounts/${editId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(form),
+          })
+        : await fetch('/api/accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(form),
+          })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save account.')
+      }
+
+      setShowModal(false)
+      router.refresh()
+    } catch (err: any) {
+      setModalError(err.message || 'Error saving account.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDelete(id: string) {
@@ -322,6 +340,23 @@ export default function AccountsClient({ accounts, accountStats }: Props) {
                 <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>✕</button>
               </div>
               <div className="modal-body">
+                {modalError && (
+                  <div style={{
+                    background: 'var(--red-subtle)',
+                    border: '1px solid var(--red-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '8px 12px',
+                    fontSize: 12,
+                    color: 'var(--red)',
+                    marginBottom: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}>
+                    <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                    <span>{modalError}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div className="field">
                     <label className="field-label">Account Label <span className="field-required">*</span></label>
